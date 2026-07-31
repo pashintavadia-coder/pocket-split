@@ -1,0 +1,779 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Pocket Split</title>
+<meta name="theme-color" content="#1A73E8">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Pocket Split">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --bg-0: #F3F6FB;
+    --surface: #FFFFFF;
+    --surface-sunken: #EDF2FA;
+
+    --blue-600: #1A73E8;
+    --blue-700: #1557B0;
+    --blue-tint: #E8F0FE;
+    --blue-tint-border: #D2E3FC;
+
+    --ink: #202124;
+    --ink-dim: #5F6368;
+    --ink-faint: #9AA0A6;
+    --border: #E3E7EE;
+    --border-soft: #EDF0F5;
+
+    --owed: #188038;
+    --owe: #D9463A;
+    --amber: #B06000;
+
+    --p1: #4285F4; --p2: #7C4DFF; --p3: #F4B400; --p4: #00ACC1;
+    --p5: #EC407A; --p6: #FF7043; --p7: #5C6BC0; --p8: #26C6DA;
+
+    --shadow-sm: 0 1px 2px rgba(32,33,36,0.06), 0 1px 6px rgba(32,33,36,0.05);
+    --shadow-md: 0 2px 6px rgba(32,33,36,0.07), 0 4px 16px rgba(32,33,36,0.06);
+    --shadow-lg: 0 8px 30px rgba(26,115,232,0.16);
+  }
+
+  * { box-sizing: border-box; }
+  html, body { background: var(--bg-0); margin: 0; }
+  #app-root, #app-root * { box-sizing: border-box; }
+
+  #app-root {
+    font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif;
+    color: var(--ink);
+    min-height: 100vh;
+    max-width: 480px;
+    margin: 0 auto;
+    position: relative;
+    background:
+      radial-gradient(520px 320px at 10% -6%, rgba(66,133,244,0.10), transparent 60%),
+      radial-gradient(460px 320px at 100% 4%, rgba(124,77,255,0.07), transparent 55%),
+      var(--bg-0);
+    overflow-x: hidden;
+  }
+
+  .display { font-weight: 800; }
+  .mono { font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace; font-variant-numeric: tabular-nums; }
+
+  @keyframes drift {
+    0%, 100% { transform: translate(0,0) rotate(var(--rot)); }
+    50% { transform: translate(4px,-5px) rotate(calc(var(--rot) + 2deg)); }
+  }
+  @media (prefers-reduced-motion: reduce) { .fan-card { animation: none !important; } }
+
+  .header { padding: 30px 20px 18px; position: relative; }
+  .fan-stack { position: absolute; top: 6px; right: 18px; width: 96px; height: 66px; z-index: 0; }
+  .fan-card {
+    position: absolute; width: 46px; height: 62px; border-radius: 12px; top: 0; left: 26px;
+    box-shadow: var(--shadow-md); --rot: 0deg; animation: drift 5.5s ease-in-out infinite;
+  }
+  .fan-card:nth-child(1) { background: linear-gradient(155deg, var(--p1), #1967D2); --rot: -18deg; transform: rotate(-18deg); z-index: 1; }
+  .fan-card:nth-child(2) { background: linear-gradient(155deg, var(--p2), #5B21D6); --rot: -6deg; transform: rotate(-6deg); z-index: 2; animation-delay: 0.4s; }
+  .fan-card:nth-child(3) { background: linear-gradient(155deg, var(--p3), #C88A00); --rot: 6deg; transform: rotate(6deg); z-index: 3; animation-delay: 0.8s; }
+  .fan-card:nth-child(4) { background: linear-gradient(155deg, var(--p4), #007C91); --rot: 18deg; transform: rotate(18deg); z-index: 4; animation-delay: 1.2s; }
+
+  .eyebrow {
+    font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 0.16em;
+    text-transform: uppercase; color: var(--blue-600); font-weight: 600;
+    margin: 0 0 6px; position: relative; z-index: 2;
+  }
+  .brand-title { font-size: 32px; margin: 0; letter-spacing: -0.02em; color: var(--ink); position: relative; z-index: 2; width: fit-content; }
+  .header-controls { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; position: relative; z-index: 2; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: 'JetBrains Mono', monospace; font-size: 12.5px;
+    background: var(--surface); border: 1px solid var(--border); padding: 6px 12px; border-radius: 20px;
+    letter-spacing: 0.05em; color: var(--ink-dim); box-shadow: var(--shadow-sm);
+  }
+  .pill strong { color: var(--ink); }
+  .pill button { background: none; border: none; color: var(--blue-600); opacity: 0.9; cursor: pointer; font-size: 11.5px; padding: 0; text-decoration: underline; font-weight: 600; }
+  select.pill { -webkit-appearance: none; appearance: none; cursor: pointer; }
+  .live-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--owed); margin-right: 5px; box-shadow: 0 0 0 3px rgba(24,128,56,0.15); }
+
+  .body-pad { padding: 6px 20px 112px; position: relative; z-index: 1; }
+
+  .gate { padding: 46px 24px; position: relative; z-index: 2; }
+  .gate .fan-stack { top: -6px; right: 8px; }
+  .gate h2 { font-size: 24px; margin: 18px 0 8px; font-weight: 800; letter-spacing: -0.01em; color: var(--ink); }
+  .gate p { font-size: 14px; color: var(--ink-dim); margin: 0 0 26px; line-height: 1.55; }
+  .field-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.09em; color: var(--ink-faint); margin-bottom: 7px; display: block; font-weight: 700; }
+  input[type="text"], input[type="number"] {
+    width: 100%; font-family: 'Inter', sans-serif; font-size: 15px; padding: 13px 14px;
+    border: 1.5px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--ink);
+    outline: none;
+  }
+  input::placeholder { color: var(--ink-faint); }
+  input:focus { border-color: var(--blue-600); box-shadow: 0 0 0 3px var(--blue-tint); }
+
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    font-family: 'Inter', sans-serif; font-size: 14.5px; font-weight: 700;
+    padding: 13px 18px; border-radius: 12px; border: none; cursor: pointer; width: 100%;
+    transition: transform 0.15s ease, opacity 0.15s ease, box-shadow 0.15s ease;
+  }
+  .btn:active { transform: scale(0.98); }
+  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  .btn-primary { background: var(--blue-600); color: #fff; box-shadow: var(--shadow-lg); }
+  .btn-outline { background: var(--surface); color: var(--ink); border: 1.5px solid var(--border); box-shadow: var(--shadow-sm); }
+  .btn-stamp { background: var(--ink); color: #fff; font-weight: 700; box-shadow: var(--shadow-md); }
+  .or-divider { display: flex; align-items: center; gap: 10px; margin: 22px 0; color: var(--ink-faint); font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600; }
+  .or-divider::before, .or-divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+
+  .glass-card { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 18px 16px 8px; margin-bottom: 18px; box-shadow: var(--shadow-sm); }
+  .total-spend-row { display: flex; justify-content: space-between; align-items: baseline; }
+  .total-spend-label { font-size: 12.5px; color: var(--ink-dim); font-weight: 600; }
+  .total-spend-amt { font-size: 24px; font-weight: 800; color: var(--ink); }
+  .total-spend-sub { font-size: 11.5px; color: var(--ink-faint); margin-top: 2px; }
+
+  .glass-card h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-faint); margin: 0 0 12px; font-weight: 700; }
+  .balance-row { display: flex; justify-content: space-between; align-items: center; padding: 11px 0; border-top: 1px solid var(--border-soft); gap: 10px; }
+  .balance-row:first-of-type { border-top: none; }
+  .person-tag { display: flex; align-items: center; gap: 9px; }
+  .avatar { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #fff; flex-shrink: 0; }
+  .balance-name { font-size: 14.5px; font-weight: 600; color: var(--ink); }
+  .balance-amt { font-size: 14px; font-weight: 700; white-space: nowrap; }
+  .amt-positive { color: var(--owed); }
+  .amt-negative { color: var(--owe); }
+  .amt-zero { color: var(--ink-faint); }
+
+  .settle-list { margin: 14px 0 4px; }
+  .settle-item { display: flex; align-items: center; gap: 8px; font-size: 13.5px; background: var(--blue-tint); border: 1px solid var(--blue-tint-border); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; color: var(--ink); }
+  .settle-arrow { color: var(--blue-600); }
+  .settle-amt { margin-left: auto; font-weight: 700; color: var(--blue-700); }
+
+  .section-title { font-size: 12.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-faint); margin: 26px 2px 12px; display: flex; align-items: center; gap: 8px; }
+  .section-title .count { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 1px 8px; font-size: 11px; color: var(--ink-dim); box-shadow: var(--shadow-sm); }
+
+  .people-row { display: flex; flex-wrap: wrap; gap: 9px; margin-bottom: 4px; }
+  .chip { display: inline-flex; align-items: center; gap: 7px; background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 6px 10px 6px 8px; font-size: 13.5px; font-weight: 600; color: var(--ink); box-shadow: var(--shadow-sm); }
+  .chip .avatar { width: 22px; height: 22px; font-size: 10.5px; }
+  .chip button { background: var(--surface-sunken); border: none; border-radius: 50%; width: 18px; height: 18px; line-height: 18px; text-align: center; color: var(--ink-dim); cursor: pointer; padding: 0; font-size: 11px; }
+  .add-person-row { display: flex; gap: 8px; margin-top: 12px; }
+  .add-person-row input { flex: 1; }
+  .add-person-row button { flex-shrink: 0; background: var(--blue-600); color: #fff; border: none; border-radius: 12px; padding: 0 18px; font-weight: 700; font-size: 19px; cursor: pointer; box-shadow: var(--shadow-md); }
+
+  .expense-ticket { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px 15px; margin-bottom: 10px; box-shadow: var(--shadow-sm); cursor: pointer; }
+  .expense-ticket:active { background: var(--surface-sunken); }
+  .expense-confirm-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; flex-wrap: wrap; }
+  .expense-confirm-text { font-size: 11.5px; color: var(--owe); font-weight: 600; }
+  .expense-del.confirm { color: var(--owe); font-weight: 700; }
+  .chip .confirm-yes { background: var(--owed); color: #fff; }
+  .expense-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .expense-desc { font-size: 15px; font-weight: 600; color: var(--ink); }
+  .expense-amt { font-size: 15px; font-weight: 700; white-space: nowrap; color: var(--blue-700); }
+  .expense-meta { font-size: 12.5px; color: var(--ink-dim); margin-top: 6px; line-height: 1.5; }
+  .expense-meta strong { color: var(--ink); }
+  .expense-del { background: none; border: none; color: var(--ink-faint); font-size: 11.5px; cursor: pointer; text-decoration: underline; margin-top: 8px; padding: 0; }
+
+  .empty-state { text-align: center; padding: 34px 14px; color: var(--ink-faint); font-size: 13.5px; border: 1.5px dashed var(--border); border-radius: 16px; background: var(--surface-sunken); }
+
+  .fab { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); width: min(440px, calc(100% - 40px)); z-index: 20; }
+
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(32,33,36,0.32); backdrop-filter: blur(2px); display: flex; align-items: flex-end; justify-content: center; z-index: 30; }
+  .modal-sheet { background: var(--surface); border: 1px solid var(--border); border-bottom: none; width: 100%; max-width: 480px; border-radius: 22px 22px 0 0; padding: 24px 20px 28px; max-height: 86vh; overflow-y: auto; box-shadow: 0 -8px 30px rgba(32,33,36,0.12); }
+  .modal-sheet h3 { margin: 0 0 18px; font-size: 19px; font-weight: 800; color: var(--ink); }
+  .field { margin-bottom: 18px; }
+  .payer-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .select-chip { display: inline-flex; align-items: center; gap: 6px; padding: 8px 13px 8px 8px; border-radius: 20px; border: 1.5px solid var(--border); background: var(--surface); font-size: 13.5px; font-weight: 600; cursor: pointer; color: var(--ink); }
+  .select-chip.active { background: var(--blue-tint); border-color: var(--blue-600); color: var(--blue-700); }
+  .split-list { display: flex; flex-direction: column; gap: 2px; }
+  .split-row { display: flex; align-items: center; gap: 10px; padding: 9px 2px; border-bottom: 1px solid var(--border-soft); font-size: 14px; font-weight: 600; color: var(--ink); }
+  .split-row input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--blue-600); }
+  .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
+  .modal-actions .btn { width: auto; flex: 1; }
+
+  .toast {
+    position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+    background: var(--ink); color: #fff; font-size: 13px; font-weight: 600;
+    padding: 10px 18px; border-radius: 20px; z-index: 50; opacity: 0; pointer-events: none; transition: opacity 0.25s;
+    box-shadow: 0 10px 30px rgba(32,33,36,0.25); max-width: calc(100% - 40px); text-align: center;
+  }
+  .toast.show { opacity: 1; }
+
+  .setup-warning {
+    margin: 20px; padding: 16px; background: #FEF3E0; border: 1px solid #F4B400;
+    border-radius: 12px; font-size: 13px; color: #7A5300; line-height: 1.5;
+  }
+  .setup-warning code { background: rgba(0,0,0,0.06); padding: 1px 5px; border-radius: 4px; }
+</style>
+</head>
+<body>
+<div id="app-root"></div>
+
+<!-- ====================================================================
+     FIREBASE SETUP — replace firebaseConfig below with YOUR project's
+     config from the Firebase console (Project settings > General >
+     Your apps > SDK setup and configuration). See SETUP.md for the
+     full walkthrough.
+     ==================================================================== -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js";
+  import {
+    getFirestore, doc, setDoc, getDoc, onSnapshot
+  } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyAB1z2p2VN5cxVp5noiosO-hU0LZhjA_W8",
+    authDomain: "fanfour.firebaseapp.com",
+    projectId: "fanfour",
+    storageBucket: "fanfour.firebasestorage.app",
+    messagingSenderId: "24476894729",
+    appId: "1:24476894729:web:dcb7a75e6b146a92d91ad8"
+  };
+
+  const needsSetup = firebaseConfig.apiKey === "REPLACE_ME";
+  window.__pocketSplitNeedsSetup = needsSetup;
+
+  if (!needsSetup) {
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    window.__firebase = { db, doc, setDoc, getDoc, onSnapshot };
+  }
+  window.__firebaseReady = true;
+</script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+
+<script type="text/babel">
+const { useState, useEffect, useCallback, useRef } = React;
+
+function uid() { return Math.random().toString(36).slice(2, 9); }
+
+const CURRENCIES = [
+  { code: 'USD', symbol: '$' }, { code: 'EUR', symbol: '€' }, { code: 'GBP', symbol: '£' },
+  { code: 'INR', symbol: '₹' }, { code: 'JPY', symbol: '¥' }, { code: 'AUD', symbol: 'A$' },
+  { code: 'CAD', symbol: 'C$' }, { code: 'SGD', symbol: 'S$' }, { code: 'AED', symbol: 'د.إ' },
+  { code: 'THB', symbol: '฿' }, { code: 'MXN', symbol: 'Mex$' }, { code: 'CHF', symbol: 'CHF' },
+];
+
+const PERSON_COLORS = ['--p1', '--p2', '--p3', '--p4', '--p5', '--p6', '--p7', '--p8'];
+function colorForPerson(name, people) {
+  const idx = people.indexOf(name);
+  return `var(${PERSON_COLORS[idx % PERSON_COLORS.length]})`;
+}
+function initials(name) { return name.trim().slice(0, 2).toUpperCase(); }
+function symbolFor(code) { const c = CURRENCIES.find(c => c.code === code); return c ? c.symbol : '$'; }
+function fmt(n, symbol) {
+  const sign = n < 0 ? '-' : '';
+  return sign + (symbol || '$') + Math.abs(n).toFixed(2);
+}
+
+function simplifySettlements(balances) {
+  const creditors = [], debtors = [];
+  Object.entries(balances).forEach(([name, amt]) => {
+    if (amt > 0.005) creditors.push({ name, amt });
+    else if (amt < -0.005) debtors.push({ name, amt: -amt });
+  });
+  creditors.sort((a, b) => b.amt - a.amt);
+  debtors.sort((a, b) => b.amt - a.amt);
+  const txns = [];
+  let i = 0, j = 0;
+  while (i < debtors.length && j < creditors.length) {
+    const pay = Math.min(debtors[i].amt, creditors[j].amt);
+    if (pay > 0.005) txns.push({ from: debtors[i].name, to: creditors[j].name, amt: pay });
+    debtors[i].amt -= pay;
+    creditors[j].amt -= pay;
+    if (debtors[i].amt < 0.005) i++;
+    if (creditors[j].amt < 0.005) j++;
+  }
+  return txns;
+}
+
+function FanStack() {
+  return (
+    <div className="fan-stack">
+      <div className="fan-card"></div>
+      <div className="fan-card"></div>
+      <div className="fan-card"></div>
+      <div className="fan-card"></div>
+    </div>
+  );
+}
+
+const EMPTY_TRIP = { people: [], expenses: [], currency: 'USD' };
+
+function App() {
+  const [fbReady, setFbReady] = useState(false);
+  const [tripCode, setTripCode] = useState(null);
+  const [codeInput, setCodeInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [trip, setTrip] = useState(null);
+  const [toast, setToast] = useState('');
+  const [showAddExpense, setShowAddExpense] = useState(false);
+  const [editingExpense, setEditingExpense] = useState(null);
+  const [confirmDeletePerson, setConfirmDeletePerson] = useState(null);
+  const [confirmDeleteExpenseId, setConfirmDeleteExpenseId] = useState(null);
+  const [newPersonName, setNewPersonName] = useState('');
+  const toastTimer = useRef(null);
+
+  useEffect(() => {
+    const check = () => {
+      if (window.__firebaseReady) setFbReady(true);
+      else setTimeout(check, 50);
+    };
+    check();
+  }, []);
+
+  const showToast = (msg) => {
+    setToast(msg);
+    clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(''), 2000);
+  };
+
+  // Real-time listener: this is the whole sync mechanism. Any device that
+  // writes to this trip doc updates every other open device automatically.
+  useEffect(() => {
+    if (!tripCode || !window.__firebase) return;
+    const { db, doc, onSnapshot } = window.__firebase;
+    setLoading(true);
+    const unsub = onSnapshot(doc(db, 'trips', tripCode), (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (!data.currency) data.currency = 'USD';
+        setTrip(data);
+      } else {
+        setTrip(null);
+      }
+      setLoading(false);
+    }, (err) => {
+      showToast('Connection issue — check your Firebase setup');
+      setLoading(false);
+    });
+    return () => unsub();
+  }, [tripCode]);
+
+  const writeTrip = async (nextTrip) => {
+    if (!window.__firebase || !tripCode) return;
+    const { db, doc, setDoc } = window.__firebase;
+    try {
+      await setDoc(doc(db, 'trips', tripCode), nextTrip, { merge: false });
+    } catch (e) {
+      showToast("Couldn't save — check your connection");
+    }
+  };
+
+  const createTrip = async () => {
+    if (!window.__firebase) { showToast('Firebase is not configured yet'); return; }
+    setLoading(true);
+    const code = Array.from({ length: 5 }, () =>
+      'ABCDEFGHJKMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]
+    ).join('');
+    const { db, doc, setDoc } = window.__firebase;
+    await setDoc(doc(db, 'trips', code), EMPTY_TRIP);
+    setTripCode(code);
+  };
+
+  const joinTrip = async () => {
+    if (!window.__firebase) { showToast('Firebase is not configured yet'); return; }
+    const c = codeInput.trim().toUpperCase();
+    if (!c) return;
+    setLoading(true);
+    const { db, doc, getDoc } = window.__firebase;
+    const snap = await getDoc(doc(db, 'trips', c));
+    if (!snap.exists()) {
+      setLoading(false);
+      showToast('No trip found with that code');
+      return;
+    }
+    setTripCode(c);
+  };
+
+  const mutate = (updater) => {
+    if (!trip) return;
+    const next = updater(trip);
+    setTrip(next); // optimistic, onSnapshot will confirm it moments later
+    writeTrip(next);
+  };
+
+  const addPerson = () => {
+    const name = newPersonName.trim();
+    if (!name) return;
+    if (trip.people.some(p => p.toLowerCase() === name.toLowerCase())) {
+      showToast('Already on the list'); return;
+    }
+    mutate(prev => ({ ...prev, people: [...prev.people, name] }));
+    setNewPersonName('');
+  };
+
+  const removePerson = (name) => {
+    mutate(prev => ({ ...prev, people: prev.people.filter(p => p !== name) }));
+    setConfirmDeletePerson(null);
+    showToast(`${name} removed`);
+  };
+
+  const requestRemovePerson = (name) => {
+    if (confirmDeletePerson === name) {
+      removePerson(name);
+    } else {
+      setConfirmDeletePerson(name);
+      setConfirmDeleteExpenseId(null);
+    }
+  };
+
+  const saveExpense = (expense) => {
+    mutate(prev => {
+      const exists = prev.expenses.some(e => e.id === expense.id);
+      const nextExpenses = exists
+        ? prev.expenses.map(e => (e.id === expense.id ? expense : e))
+        : [...prev.expenses, expense];
+      return { ...prev, expenses: nextExpenses };
+    });
+    showToast(editingExpense ? 'Expense updated' : 'Added to the tab');
+  };
+
+  const deleteExpense = (id) => {
+    mutate(prev => ({ ...prev, expenses: prev.expenses.filter(e => e.id !== id) }));
+    setConfirmDeleteExpenseId(null);
+    showToast('Expense removed');
+  };
+
+  const requestDeleteExpense = (id) => {
+    if (confirmDeleteExpenseId === id) {
+      deleteExpense(id);
+    } else {
+      setConfirmDeleteExpenseId(id);
+      setConfirmDeletePerson(null);
+    }
+  };
+  const updateCurrency = (code) => mutate(prev => ({ ...prev, currency: code }));
+
+  if (window.__pocketSplitNeedsSetup) {
+    return (
+      <div className="gate">
+        <FanStack />
+        <p className="eyebrow mono">POCKET SPLIT</p>
+        <h2 className="display">Almost there</h2>
+        <div className="setup-warning">
+          Firebase isn't configured yet. Open <code>index.html</code>, find the
+          <code> firebaseConfig </code> block near the top, and paste in your
+          own project's config. See <code>SETUP.md</code> for the full
+          walkthrough (~5 minutes).
+        </div>
+      </div>
+    );
+  }
+
+  if (!fbReady) {
+    return <div style={{ padding: 50, textAlign: 'center', color: 'var(--ink-faint)' }}>Loading…</div>;
+  }
+
+  if (!tripCode) {
+    return (
+      <div className="gate">
+        <FanStack />
+        <p className="eyebrow mono">POCKET SPLIT</p>
+        <h2 className="display">Split it, don't sweat it</h2>
+        <p>Start a new trip and share the code with your group — or join one they already started. Everyone with the code sees the same running tab, live.</p>
+        <button className="btn btn-primary" onClick={createTrip} disabled={loading}>
+          Start a new trip
+        </button>
+        <div className="or-divider">or join with a code</div>
+        <div className="field">
+          <input
+            type="text" placeholder="e.g. K7QXP" value={codeInput}
+            onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
+            style={{ textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10 }}
+            maxLength={8}
+            onKeyDown={(e) => e.key === 'Enter' && joinTrip()}
+          />
+        </div>
+        <button className="btn btn-outline" onClick={joinTrip} disabled={loading}>
+          Join trip
+        </button>
+      </div>
+    );
+  }
+
+  if (loading || !trip) {
+    return <div style={{ padding: 50, textAlign: 'center', color: 'var(--ink-faint)' }}>Loading trip…</div>;
+  }
+
+  const { people, expenses } = trip;
+  const currency = trip.currency || 'USD';
+  const symbol = symbolFor(currency);
+
+  const balances = {};
+  people.forEach(p => balances[p] = 0);
+  expenses.forEach(exp => {
+    const share = exp.amount / exp.splitAmong.length;
+    if (balances[exp.paidBy] === undefined) balances[exp.paidBy] = 0;
+    balances[exp.paidBy] += exp.amount;
+    exp.splitAmong.forEach(p => {
+      if (balances[p] === undefined) balances[p] = 0;
+      balances[p] -= share;
+    });
+  });
+
+  const settlements = simplifySettlements(balances);
+  const sortedPeople = [...people].sort((a, b) => (balances[b] || 0) - (balances[a] || 0));
+  const totalSpent = expenses.reduce((sum, e) => sum + e.amount, 0);
+
+  const formatExpenseDate = (ts) => {
+    if (!ts) return '';
+    const d = new Date(ts);
+    const today = new Date();
+    const isToday = d.toDateString() === today.toDateString();
+    if (isToday) return 'Today';
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  };
+
+  return (
+    <div>
+      <div className="header">
+        <FanStack />
+        <h1 className="brand-title display">Pocket Split</h1>
+        <div className="header-controls">
+          <div className="pill">
+            <span className="live-dot"></span>CODE&nbsp;<strong>{tripCode}</strong>
+            <button onClick={() => { navigator.clipboard && navigator.clipboard.writeText(tripCode); showToast('Code copied'); }}>copy</button>
+          </div>
+          <select className="pill mono" value={currency} onChange={(e) => updateCurrency(e.target.value)}>
+            {CURRENCIES.map(c => (
+              <option key={c.code} value={c.code}>{c.symbol} {c.code}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      <div className="body-pad">
+        {people.length === 0 ? (
+          <div className="glass-card">
+            <h3>Get started</h3>
+            <p style={{fontSize: 13.5, color: 'var(--ink-dim)', margin: '0 0 14px'}}>
+              Add everyone on the trip below, then start logging expenses.
+            </p>
+          </div>
+        ) : (
+          <div className="glass-card">
+            <div className="total-spend-row">
+              <span className="total-spend-label">Total spent</span>
+              <span className="total-spend-amt mono">{fmt(totalSpent, symbol)}</span>
+            </div>
+            {people.length > 0 && (
+              <div className="total-spend-sub">{fmt(totalSpent / people.length, symbol)} avg per person</div>
+            )}
+            <h3 style={{marginTop: 16}}>Who owes what</h3>
+            {sortedPeople.map(p => {
+              const b = balances[p] || 0;
+              const cls = b > 0.005 ? 'amt-positive' : b < -0.005 ? 'amt-negative' : 'amt-zero';
+              const label = b > 0.005 ? 'is owed' : b < -0.005 ? 'owes' : 'settled up';
+              return (
+                <div className="balance-row" key={p}>
+                  <div className="person-tag">
+                    <div className="avatar" style={{background: colorForPerson(p, people)}}>{initials(p)}</div>
+                    <span className="balance-name">{p}</span>
+                  </div>
+                  <span className={'balance-amt mono ' + cls}>
+                    {b === 0 ? 'settled up' : `${label} ${fmt(Math.abs(b), symbol)}`}
+                  </span>
+                </div>
+              );
+            })}
+
+            {settlements.length > 0 && (
+              <>
+                <h3 style={{marginTop: 20}}>To settle up</h3>
+                <div className="settle-list">
+                  {settlements.map((s, i) => (
+                    <div className="settle-item" key={i}>
+                      <div className="avatar" style={{width: 22, height: 22, fontSize: 10, background: colorForPerson(s.from, people)}}>{initials(s.from)}</div>
+                      <strong>{s.from}</strong>
+                      <span className="settle-arrow">→</span>
+                      <div className="avatar" style={{width: 22, height: 22, fontSize: 10, background: colorForPerson(s.to, people)}}>{initials(s.to)}</div>
+                      <strong>{s.to}</strong>
+                      <span className="settle-amt mono">{fmt(s.amt, symbol)}</span>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
+
+        <div className="section-title">People <span className="count">{people.length}</span></div>
+        <div className="people-row">
+          {people.map(p => (
+            <div className="chip" key={p}>
+              <div className="avatar" style={{background: colorForPerson(p, people)}}>{initials(p)}</div>
+              {p}
+              {confirmDeletePerson === p ? (
+                <>
+                  <button className="confirm-yes" onClick={() => requestRemovePerson(p)} title="Confirm remove">✓</button>
+                  <button onClick={() => setConfirmDeletePerson(null)} title="Cancel">×</button>
+                </>
+              ) : (
+                <button onClick={() => requestRemovePerson(p)} title="Remove">×</button>
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="add-person-row">
+          <input
+            type="text" placeholder="Add a person…" value={newPersonName}
+            onChange={(e) => setNewPersonName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && addPerson()}
+          />
+          <button onClick={addPerson}>+</button>
+        </div>
+
+        <div className="section-title">Expenses <span className="count">{expenses.length}</span></div>
+        {expenses.length === 0 ? (
+          <div className="empty-state">No expenses logged yet. Tap "Add expense" below to start the tab.</div>
+        ) : (
+          [...expenses].reverse().map(exp => (
+            <div
+              className="expense-ticket"
+              key={exp.id}
+              onClick={() => { setEditingExpense(exp); setShowAddExpense(true); }}
+            >
+              <div className="expense-top">
+                <span className="expense-desc">{exp.description || 'Expense'}</span>
+                <span className="expense-amt mono">{fmt(exp.amount, symbol)}</span>
+              </div>
+              <div className="expense-meta">
+                {formatExpenseDate(exp.ts)} · Paid by <strong>{exp.paidBy}</strong> · split {exp.splitAmong.length} way{exp.splitAmong.length !== 1 ? 's' : ''} ({exp.splitAmong.join(', ')})
+              </div>
+              {confirmDeleteExpenseId === exp.id ? (
+                <span className="expense-confirm-row" onClick={(e) => e.stopPropagation()}>
+                  <span className="expense-confirm-text">Remove this expense?</span>
+                  <button className="expense-del confirm" onClick={() => requestDeleteExpense(exp.id)}>Yes, remove</button>
+                  <button className="expense-del" onClick={() => setConfirmDeleteExpenseId(null)}>Cancel</button>
+                </span>
+              ) : (
+                <button
+                  className="expense-del"
+                  onClick={(e) => { e.stopPropagation(); requestDeleteExpense(exp.id); }}
+                >
+                  remove
+                </button>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+
+      <div className="fab">
+        <button className="btn btn-stamp" onClick={() => { setEditingExpense(null); setShowAddExpense(true); }} disabled={people.length === 0}>
+          + Add expense
+        </button>
+      </div>
+
+      {showAddExpense && (
+        <AddExpenseModal
+          people={people}
+          symbol={symbol}
+          initial={editingExpense}
+          onClose={() => { setShowAddExpense(false); setEditingExpense(null); }}
+          onSave={(exp) => { saveExpense(exp); setShowAddExpense(false); setEditingExpense(null); }}
+        />
+      )}
+
+      <div className={'toast' + (toast ? ' show' : '')}>{toast}</div>
+    </div>
+  );
+}
+
+function AddExpenseModal({ people, symbol, initial, onClose, onSave }) {
+  const isEdit = !!initial;
+  const [description, setDescription] = useState(initial ? initial.description : '');
+  const [amount, setAmount] = useState(initial ? String(initial.amount) : '');
+  const [paidBy, setPaidBy] = useState(initial ? initial.paidBy : people[0]);
+  const [splitAmong, setSplitAmong] = useState(initial ? [...initial.splitAmong] : [...people]);
+
+  const toggle = (p) => setSplitAmong(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]);
+  const canSave = description.trim() && parseFloat(amount) > 0 && paidBy && splitAmong.length > 0;
+
+  const save = () => {
+    if (!canSave) return;
+    onSave({
+      id: isEdit ? initial.id : uid(),
+      description: description.trim(),
+      amount: parseFloat(amount),
+      paidBy,
+      splitAmong: [...splitAmong],
+      ts: isEdit ? initial.ts : Date.now(),
+    });
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal-sheet">
+        <h3 className="display">{isEdit ? 'Edit expense' : 'Add expense'}</h3>
+
+        <div className="field">
+          <span className="field-label">What was it</span>
+          <input type="text" placeholder="e.g. Dinner at the taco place" value={description}
+            onChange={(e) => setDescription(e.target.value)} autoFocus />
+        </div>
+
+        <div className="field">
+          <span className="field-label">Amount</span>
+          <div style={{position: 'relative'}}>
+            <span style={{position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--ink-faint)', fontSize: 15, pointerEvents: 'none'}}>{symbol}</span>
+            <input type="number" inputMode="decimal" placeholder="0.00" value={amount}
+              onChange={(e) => setAmount(e.target.value)} style={{paddingLeft: 14 + (symbol.length * 9) + 6}} />
+          </div>
+        </div>
+
+        <div className="field">
+          <span className="field-label">Who paid</span>
+          <div className="payer-row">
+            {people.map(p => (
+              <button key={p} className={'select-chip' + (paidBy === p ? ' active' : '')} onClick={() => setPaidBy(p)}>
+                <div className="avatar" style={{width: 18, height: 18, fontSize: 9, background: colorForPerson(p, people)}}>{initials(p)}</div>
+                {p}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="field">
+          <span className="field-label">Split among</span>
+          <div className="split-list">
+            {people.map(p => (
+              <label className="split-row" key={p}>
+                <input type="checkbox" checked={splitAmong.includes(p)} onChange={() => toggle(p)} />
+                <div className="avatar" style={{width: 20, height: 20, fontSize: 9.5, background: colorForPerson(p, people)}}>{initials(p)}</div>
+                {p}
+              </label>
+            ))}
+          </div>
+          <div style={{fontSize: 12, color: 'var(--ink-faint)', marginTop: 8}}>
+            Uncheck anyone who's sitting this one out — the rest split it evenly.
+          </div>
+        </div>
+
+        <div className="modal-actions">
+          <button className="btn btn-outline" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={save} disabled={!canSave}>{isEdit ? 'Save changes' : 'Save'}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('app-root')).render(<App />);
+</script>
+
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('sw.js').catch(() => {});
+    });
+  }
+</script>
+</body>
+</html>
