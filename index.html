@@ -100,6 +100,7 @@
   .pill button { background: none; border: none; color: var(--blue-600); opacity: 0.9; cursor: pointer; font-size: 11.5px; padding: 0; text-decoration: underline; font-weight: 600; }
   select.pill { -webkit-appearance: none; appearance: none; cursor: pointer; }
   .live-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--owed); margin-right: 5px; box-shadow: 0 0 0 3px rgba(24,128,56,0.15); }
+  .live-dot.offline { background: var(--owe); box-shadow: 0 0 0 3px rgba(217,70,58,0.15); }
 
   .body-pad { padding: 6px 20px 112px; position: relative; z-index: 1; }
 
@@ -220,7 +221,8 @@
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js";
   import {
-    getFirestore, doc, setDoc, getDoc, onSnapshot
+    initializeFirestore, persistentLocalCache, persistentSingleTabManager,
+    doc, setDoc, getDoc, onSnapshot
   } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js";
 
   const firebaseConfig = {
@@ -237,7 +239,14 @@
 
   if (!needsSetup) {
     const app = initializeApp(firebaseConfig);
-    const db = getFirestore(app);
+    // Persistent local cache (IndexedDB-backed): lets the app show the
+    // last-synced balances/expenses when there's no connection, and lets
+    // any writes made while offline queue durably — surviving a reload or
+    // the phone killing the tab in the background — until connectivity
+    // returns, at which point they sync automatically.
+    const db = initializeFirestore(app, {
+      localCache: persistentLocalCache({ tabManager: persistentSingleTabManager({}) }),
+    });
     window.__firebase = { db, doc, setDoc, getDoc, onSnapshot };
   }
   window.__firebaseReady = true;
@@ -304,10 +313,13 @@ function FanStack() {
 }
 
 const EMPTY_TRIP = { people: [], expenses: [], currency: 'USD' };
+const STORAGE_KEY = 'pocketSplitTripCode';
 
 function App() {
   const [fbReady, setFbReady] = useState(false);
-  const [tripCode, setTripCode] = useState(null);
+  const [tripCode, setTripCode] = useState(() => {
+    try { return localStorage.getItem(STORAGE_KEY) || null; } catch (e) { return null; }
+  });
   const [codeInput, setCodeInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [trip, setTrip] = useState(null);
@@ -317,7 +329,19 @@ function App() {
   const [confirmDeletePerson, setConfirmDeletePerson] = useState(null);
   const [confirmDeleteExpenseId, setConfirmDeleteExpenseId] = useState(null);
   const [newPersonName, setNewPersonName] = useState('');
+  const [isOnline, setIsOnline] = useState(() => (typeof navigator !== 'undefined' ? navigator.onLine : true));
   const toastTimer = useRef(null);
+
+  useEffect(() => {
+    const goOnline = () => { setIsOnline(true); showToast('Back online — syncing'); };
+    const goOffline = () => { setIsOnline(false); showToast("You're offline — changes will sync once you're back"); };
+    window.addEventListener('online', goOnline);
+    window.addEventListener('offline', goOffline);
+    return () => {
+      window.removeEventListener('online', goOnline);
+      window.removeEventListener('offline', goOffline);
+    };
+  }, []);
 
   useEffect(() => {
     const check = () => {
@@ -345,7 +369,13 @@ function App() {
         if (!data.currency) data.currency = 'USD';
         setTrip(data);
       } else {
+        // A remembered code that no longer points to a real trip (deleted,
+        // typo'd into storage some other way, etc). Don't get stuck on a
+        // permanent loading screen — bounce back to the start screen.
+        try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+        setTripCode(null);
         setTrip(null);
+        showToast("That trip couldn't be found — start or join again");
       }
       setLoading(false);
     }, (err) => {
@@ -365,6 +395,16 @@ function App() {
     }
   };
 
+  const rememberTrip = (code) => {
+    try { localStorage.setItem(STORAGE_KEY, code); } catch (e) {}
+  };
+
+  const leaveTrip = () => {
+    try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+    setTripCode(null);
+    setTrip(null);
+  };
+
   const createTrip = async () => {
     if (!window.__firebase) { showToast('Firebase is not configured yet'); return; }
     setLoading(true);
@@ -373,6 +413,7 @@ function App() {
     ).join('');
     const { db, doc, setDoc } = window.__firebase;
     await setDoc(doc(db, 'trips', code), EMPTY_TRIP);
+    rememberTrip(code);
     setTripCode(code);
   };
 
@@ -388,8 +429,10 @@ function App() {
       showToast('No trip found with that code');
       return;
     }
+    rememberTrip(c);
     setTripCode(c);
   };
+
 
   const mutate = (updater) => {
     if (!trip) return;
@@ -537,7 +580,8 @@ function App() {
         <h1 className="brand-title display">Pocket Split</h1>
         <div className="header-controls">
           <div className="pill">
-            <span className="live-dot"></span>CODE&nbsp;<strong>{tripCode}</strong>
+            <span className={'live-dot' + (isOnline ? '' : ' offline')}></span>
+            {isOnline ? 'CODE' : 'OFFLINE'}&nbsp;<strong>{tripCode}</strong>
             <button onClick={() => { navigator.clipboard && navigator.clipboard.writeText(tripCode); showToast('Code copied'); }}>copy</button>
           </div>
           <select className="pill mono" value={currency} onChange={(e) => updateCurrency(e.target.value)}>
@@ -545,6 +589,7 @@ function App() {
               <option key={c.code} value={c.code}>{c.symbol} {c.code}</option>
             ))}
           </select>
+          <button className="pill" onClick={leaveTrip} style={{cursor: 'pointer'}}>Switch trip</button>
         </div>
       </div>
 
