@@ -175,6 +175,7 @@
   .expense-amt { font-size: 15px; font-weight: 700; white-space: nowrap; color: var(--blue-700); }
   .expense-meta { font-size: 12.5px; color: var(--ink-dim); margin-top: 6px; line-height: 1.5; }
   .expense-meta strong { color: var(--ink); }
+  .expense-fx-note { font-size: 11.5px; color: var(--blue-700); margin-top: 3px; font-family: 'JetBrains Mono', monospace; }
   .expense-del { background: none; border: none; color: var(--ink-faint); font-size: 11.5px; cursor: pointer; text-decoration: underline; margin-top: 8px; padding: 0; }
 
   .empty-state { text-align: center; padding: 34px 14px; color: var(--ink-faint); font-size: 13.5px; border: 1.5px dashed var(--border); border-radius: 16px; background: var(--surface-sunken); }
@@ -185,6 +186,14 @@
   .modal-sheet { background: var(--surface); border: 1px solid var(--border); border-bottom: none; width: 100%; max-width: 480px; border-radius: 22px 22px 0 0; padding: 24px 20px 28px; max-height: 86vh; overflow-y: auto; box-shadow: 0 -8px 30px rgba(32,33,36,0.12); }
   .modal-sheet h3 { margin: 0 0 18px; font-size: 19px; font-weight: 800; color: var(--ink); }
   .field { margin-bottom: 18px; }
+  .amount-currency-row { display: flex; gap: 8px; align-items: stretch; }
+  .currency-picker {
+    font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600;
+    border: 1.5px solid var(--border); border-radius: 12px; background: var(--surface);
+    color: var(--ink); padding: 0 10px; cursor: pointer; flex-shrink: 0;
+  }
+  .convert-hint { font-size: 12px; color: var(--blue-700); margin-top: 8px; }
+  .convert-error { font-size: 12px; color: var(--owe); margin-top: 8px; font-weight: 600; }
   .payer-row { display: flex; flex-wrap: wrap; gap: 8px; }
   .select-chip { display: inline-flex; align-items: center; gap: 6px; padding: 8px 13px 8px 8px; border-radius: 20px; border: 1.5px solid var(--border); background: var(--surface); font-size: 13.5px; font-weight: 600; cursor: pointer; color: var(--ink); }
   .select-chip.active { background: var(--blue-tint); border-color: var(--blue-600); color: var(--blue-700); }
@@ -691,6 +700,12 @@ function App() {
               <div className="expense-meta">
                 {formatExpenseDate(exp.ts)} · Paid by <strong>{exp.paidBy}</strong> · split {exp.splitAmong.length} way{exp.splitAmong.length !== 1 ? 's' : ''} ({exp.splitAmong.join(', ')})
               </div>
+              {exp.originalCurrency && (
+                <div className="expense-fx-note">
+                  Originally {fmt(exp.originalAmount, symbolFor(exp.originalCurrency))} {exp.originalCurrency}
+                  {exp.conversionRate ? ` · 1 ${exp.originalCurrency} = ${symbol}${exp.conversionRate.toFixed(4)}` : ''}
+                </div>
+              )}
               {confirmDeleteExpenseId === exp.id ? (
                 <span className="expense-confirm-row" onClick={(e) => e.stopPropagation()}>
                   <span className="expense-confirm-text">Remove this expense?</span>
@@ -720,6 +735,7 @@ function App() {
         <AddExpenseModal
           people={people}
           symbol={symbol}
+          tripCurrency={currency}
           initial={editingExpense}
           onClose={() => { setShowAddExpense(false); setEditingExpense(null); }}
           onSave={(exp) => { saveExpense(exp); setShowAddExpense(false); setEditingExpense(null); }}
@@ -731,26 +747,73 @@ function App() {
   );
 }
 
-function AddExpenseModal({ people, symbol, initial, onClose, onSave }) {
+function AddExpenseModal({ people, symbol, tripCurrency, initial, onClose, onSave }) {
   const isEdit = !!initial;
   const [description, setDescription] = useState(initial ? initial.description : '');
-  const [amount, setAmount] = useState(initial ? String(initial.amount) : '');
+  // If editing a foreign-currency expense, show the original typed amount/currency,
+  // not the already-converted trip-currency amount — that's what the person expects to see.
+  const [amount, setAmount] = useState(
+    initial ? String(initial.originalAmount != null ? initial.originalAmount : initial.amount) : ''
+  );
+  const [expenseCurrency, setExpenseCurrency] = useState(
+    initial && initial.originalCurrency ? initial.originalCurrency : tripCurrency
+  );
   const [paidBy, setPaidBy] = useState(initial ? initial.paidBy : people[0]);
   const [splitAmong, setSplitAmong] = useState(initial ? [...initial.splitAmong] : [...people]);
+  const [converting, setConverting] = useState(false);
+  const [conversionError, setConversionError] = useState('');
 
   const toggle = (p) => setSplitAmong(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]);
-  const canSave = description.trim() && parseFloat(amount) > 0 && paidBy && splitAmong.length > 0;
+  const canSave = description.trim() && parseFloat(amount) > 0 && paidBy && splitAmong.length > 0 && !converting;
+  const isForeign = expenseCurrency !== tripCurrency;
+  const expenseSymbol = symbolFor(expenseCurrency);
 
-  const save = () => {
+  const save = async () => {
     if (!canSave) return;
-    onSave({
-      id: isEdit ? initial.id : uid(),
-      description: description.trim(),
-      amount: parseFloat(amount),
-      paidBy,
-      splitAmong: [...splitAmong],
-      ts: isEdit ? initial.ts : Date.now(),
-    });
+    const typedAmount = parseFloat(amount);
+    setConversionError('');
+
+    if (!isForeign) {
+      onSave({
+        id: isEdit ? initial.id : uid(),
+        description: description.trim(),
+        amount: typedAmount,
+        paidBy,
+        splitAmong: [...splitAmong],
+        ts: isEdit ? initial.ts : Date.now(),
+        // clear any leftover foreign-currency fields if this was edited back to the trip currency
+        // (Firestore rejects `undefined` values, so null is used here instead)
+        originalAmount: null,
+        originalCurrency: null,
+        conversionRate: null,
+      });
+      return;
+    }
+
+    setConverting(true);
+    try {
+      const res = await fetch(`https://api.frankfurter.dev/v2/rate/${expenseCurrency}/${tripCurrency}`);
+      if (!res.ok) throw new Error('rate fetch failed');
+      const data = await res.json();
+      const rate = data.rate;
+      if (!rate) throw new Error('no rate in response');
+      const converted = Math.round(typedAmount * rate * 100) / 100;
+      onSave({
+        id: isEdit ? initial.id : uid(),
+        description: description.trim(),
+        amount: converted,
+        paidBy,
+        splitAmong: [...splitAmong],
+        ts: isEdit ? initial.ts : Date.now(),
+        originalAmount: typedAmount,
+        originalCurrency: expenseCurrency,
+        conversionRate: rate,
+      });
+    } catch (e) {
+      setConversionError("Couldn't fetch today's exchange rate — check your connection and try again.");
+    } finally {
+      setConverting(false);
+    }
   };
 
   return (
@@ -766,11 +829,30 @@ function AddExpenseModal({ people, symbol, initial, onClose, onSave }) {
 
         <div className="field">
           <span className="field-label">Amount</span>
-          <div style={{position: 'relative'}}>
-            <span style={{position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--ink-faint)', fontSize: 15, pointerEvents: 'none'}}>{symbol}</span>
-            <input type="number" inputMode="decimal" placeholder="0.00" value={amount}
-              onChange={(e) => setAmount(e.target.value)} style={{paddingLeft: 14 + (symbol.length * 9) + 6}} />
+          <div className="amount-currency-row">
+            <div style={{position: 'relative', flex: 1}}>
+              <span style={{position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', color: 'var(--ink-faint)', fontSize: 15, pointerEvents: 'none'}}>{expenseSymbol}</span>
+              <input type="number" inputMode="decimal" placeholder="0.00" value={amount}
+                onChange={(e) => setAmount(e.target.value)} style={{paddingLeft: 14 + (expenseSymbol.length * 9) + 6}} />
+            </div>
+            <select
+              className="currency-picker"
+              value={expenseCurrency}
+              onChange={(e) => setExpenseCurrency(e.target.value)}
+            >
+              {CURRENCIES.map(c => (
+                <option key={c.code} value={c.code}>{c.code}</option>
+              ))}
+            </select>
           </div>
+          {isForeign && !conversionError && (
+            <div className="convert-hint">
+              Will convert to {symbol} {tripCurrency} at today's exchange rate when you save.
+            </div>
+          )}
+          {conversionError && (
+            <div className="convert-error">{conversionError}</div>
+          )}
         </div>
 
         <div className="field">
@@ -803,7 +885,9 @@ function AddExpenseModal({ people, symbol, initial, onClose, onSave }) {
 
         <div className="modal-actions">
           <button className="btn btn-outline" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary" onClick={save} disabled={!canSave}>{isEdit ? 'Save changes' : 'Save'}</button>
+          <button className="btn btn-primary" onClick={save} disabled={!canSave}>
+            {converting ? 'Converting…' : (isEdit ? 'Save changes' : (isForeign ? 'Save & convert' : 'Save'))}
+          </button>
         </div>
       </div>
     </div>
