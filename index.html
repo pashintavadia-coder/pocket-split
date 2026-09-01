@@ -14,7 +14,7 @@
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@600;700;800&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
 
 <style>
   :root {
@@ -63,7 +63,7 @@
     overflow-x: hidden;
   }
 
-  .display { font-weight: 800; }
+  .display { font-family: 'Plus Jakarta Sans', 'Inter', sans-serif; font-weight: 800; }
   .mono { font-family: 'JetBrains Mono', 'SF Mono', Consolas, monospace; font-variant-numeric: tabular-nums; }
 
   @keyframes drift {
@@ -148,10 +148,10 @@
     cursor: pointer; font-size: 14px; line-height: 24px; text-align: center; padding: 0;
   }
 
-  .glass-card { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 18px 16px 8px; margin-bottom: 18px; box-shadow: var(--shadow-sm); }
+  .glass-card { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 20px 18px 10px; margin-bottom: 20px; box-shadow: var(--shadow-sm); }
   .total-spend-row { display: flex; justify-content: space-between; align-items: baseline; }
   .total-spend-label { font-size: 12.5px; color: var(--ink-dim); font-weight: 600; }
-  .total-spend-amt { font-size: 24px; font-weight: 800; color: var(--ink); }
+  .total-spend-amt { font-size: 32px; font-weight: 800; color: var(--ink); letter-spacing: -0.01em; }
   .total-spend-sub { font-size: 11.5px; color: var(--ink-faint); margin-top: 2px; }
 
   .glass-card h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-faint); margin: 0 0 12px; font-weight: 700; }
@@ -160,7 +160,7 @@
   .person-tag { display: flex; align-items: center; gap: 9px; }
   .avatar { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #fff; flex-shrink: 0; }
   .balance-name { font-size: 14.5px; font-weight: 600; color: var(--ink); }
-  .balance-amt { font-size: 14px; font-weight: 700; white-space: nowrap; }
+  .balance-amt { font-size: 15.5px; font-weight: 700; white-space: nowrap; }
   .amt-positive { color: var(--owed); }
   .amt-negative { color: var(--owe); }
   .amt-zero { color: var(--ink-faint); }
@@ -253,6 +253,33 @@
 
   .invite-pill { background: var(--blue-600); border-color: var(--blue-600); color: #fff; font-weight: 700; }
   .invite-option-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+  .settings-option-list { display: flex; flex-direction: column; gap: 8px; margin: 14px 0; }
+  .settings-option-value { color: var(--ink-faint); font-size: 13px; font-weight: 600; }
+
+  .tab-bar {
+    display: flex; gap: 4px; background: var(--surface-sunken); border-radius: 14px;
+    padding: 4px; margin: 4px 0 22px; position: relative; z-index: 1;
+  }
+  .tab-btn {
+    flex: 1; background: none; border: none; padding: 10px 8px; border-radius: 11px;
+    font-size: 13.5px; font-weight: 700; color: var(--ink-dim); cursor: pointer;
+    font-family: 'Inter', sans-serif;
+  }
+  .tab-btn.active { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }
+
+  .settings-gear-btn {
+    background: var(--surface); border: 1.5px solid var(--border); border-radius: 12px;
+    width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center;
+    cursor: pointer; box-shadow: var(--shadow-sm); font-size: 17px; flex-shrink: 0;
+  }
+
+  .spend-chart { margin: 16px 0 4px; }
+  .spend-chart-row { margin-bottom: 12px; }
+  .spend-chart-labels { display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 5px; }
+  .spend-chart-name { font-weight: 600; color: var(--ink); }
+  .spend-chart-amt { color: var(--ink-dim); font-family: 'JetBrains Mono', monospace; }
+  .spend-chart-track { background: var(--surface-sunken); border-radius: 8px; height: 10px; overflow: hidden; }
+  .spend-chart-fill { height: 100%; border-radius: 8px; }
   .invite-option {
     display: flex; align-items: center; justify-content: space-between;
     background: var(--surface); border: 1.5px solid var(--border); border-radius: 12px;
@@ -614,6 +641,38 @@ function ManageCurrenciesModal({ pinned, onSave, onClose }) {
   );
 }
 
+function TripSettingsModal({ tripName, currency, symbol, archivedCount, onOpenCurrencyPicker, onOpenManageCurrencies, onOpenArchive, onSwitchTrip, onClose }) {
+  return (
+    <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal-sheet">
+        <h3 className="display">Trip settings</h3>
+        {tripName && <p className="manage-currencies-hint" style={{marginTop: -8}}>{tripName}</p>}
+
+        <div className="settings-option-list">
+          <button className="invite-option" onClick={onOpenCurrencyPicker}>
+            <span>Trip currency</span>
+            <span className="settings-option-value mono">{symbol} {currency}</span>
+          </button>
+          <button className="invite-option" onClick={onOpenManageCurrencies}>
+            <span>Manage pinned currencies</span>
+          </button>
+          <button className="invite-option" onClick={onOpenArchive}>
+            <span>Archived expenses</span>
+            {archivedCount > 0 && <span className="settings-option-value">{archivedCount}</span>}
+          </button>
+          <button className="invite-option" onClick={onSwitchTrip}>
+            <span>Switch trip</span>
+          </button>
+        </div>
+
+        <div className="modal-actions">
+          <button className="btn btn-outline" onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function InviteFallbackModal({ url, text, showToast, onClose }) {
   const waLink = `https://wa.me/?text=${encodeURIComponent(text + '\n' + url)}`;
   const mailLink = `mailto:?subject=${encodeURIComponent(text)}&body=${encodeURIComponent(text + '\n\n' + url)}`;
@@ -747,6 +806,8 @@ function App() {
   const [showManageCurrencies, setShowManageCurrencies] = useState(false);
   const [showArchive, setShowArchive] = useState(false);
   const [showInviteFallback, setShowInviteFallback] = useState(false);
+  const [activeTab, setActiveTab] = useState('summary');
+  const [showTripSettings, setShowTripSettings] = useState(false);
   const [tripHistory, setTripHistory] = useState(() => loadTripHistory());
   const [loading, setLoading] = useState(false);
   const [trip, setTrip] = useState(null);
@@ -1073,7 +1134,7 @@ function App() {
 
         {tripHistory.length > 0 && (
           <>
-            <div className="section-title" style={{marginTop: 30}}>Your trips</div>
+            <div className="section-title" style={{marginTop: 30}}>Groups</div>
             <div className="history-list">
               {tripHistory.map((h) => (
                 <div className="history-item" key={h.code} onClick={() => jumpToTrip(h.code)}>
@@ -1149,6 +1210,12 @@ function App() {
   const sortedPeople = [...people].sort((a, b) => (balances[b] || 0) - (balances[a] || 0));
   const totalSpent = expenses.reduce((sum, e) => sum + e.amount, 0);
 
+  const paidTotals = {};
+  people.forEach(p => paidTotals[p] = 0);
+  expenses.forEach(exp => { paidTotals[exp.paidBy] = (paidTotals[exp.paidBy] || 0) + exp.amount; });
+  const maxPaid = Math.max(1, ...people.map(p => paidTotals[p] || 0));
+  const chartPeople = [...people].sort((a, b) => (paidTotals[b] || 0) - (paidTotals[a] || 0));
+
   const formatExpenseDate = (ts) => {
     if (!ts) return '';
     const d = new Date(ts);
@@ -1173,11 +1240,7 @@ function App() {
             {isOnline ? 'CODE' : 'OFFLINE'}&nbsp;<strong>{tripCode}</strong>
             <button onClick={() => { navigator.clipboard && navigator.clipboard.writeText(tripCode); showToast('Code copied'); }}>copy</button>
           </div>
-          <button className="pill mono" onClick={() => setShowHeaderCurrencyPicker(true)} style={{cursor: 'pointer'}}>
-            {symbol} {currency}
-          </button>
-          <button className="pill" onClick={() => setShowManageCurrencies(true)} style={{cursor: 'pointer'}}>Manage currencies</button>
-          <button className="pill" onClick={leaveTrip} style={{cursor: 'pointer'}}>Switch trip</button>
+          <button className="settings-gear-btn" onClick={() => setShowTripSettings(true)} title="Trip settings">⚙</button>
         </div>
       </div>
 
@@ -1187,6 +1250,20 @@ function App() {
           text={inviteText}
           showToast={showToast}
           onClose={() => setShowInviteFallback(false)}
+        />
+      )}
+
+      {showTripSettings && (
+        <TripSettingsModal
+          tripName={trip.name}
+          currency={currency}
+          symbol={symbol}
+          archivedCount={(trip.archivedExpenses || []).length}
+          onOpenCurrencyPicker={() => { setShowTripSettings(false); setShowHeaderCurrencyPicker(true); }}
+          onOpenManageCurrencies={() => { setShowTripSettings(false); setShowManageCurrencies(true); }}
+          onOpenArchive={() => { setShowTripSettings(false); setShowArchive(true); }}
+          onSwitchTrip={() => { setShowTripSettings(false); leaveTrip(); }}
+          onClose={() => setShowTripSettings(false)}
         />
       )}
 
@@ -1221,132 +1298,161 @@ function App() {
       )}
 
       <div className="body-pad">
-        {people.length === 0 ? (
-          <div className="glass-card">
-            <h3>Get started</h3>
-            <p style={{fontSize: 13.5, color: 'var(--ink-dim)', margin: '0 0 14px'}}>
-              Add everyone on the trip below, then start logging expenses.
-            </p>
-          </div>
-        ) : (
-          <div className="glass-card">
-            <div className="total-spend-row">
-              <span className="total-spend-label">Total spent</span>
-              <span className="total-spend-amt mono">{fmt(totalSpent, symbol)}</span>
-            </div>
-            {people.length > 0 && (
-              <div className="total-spend-sub">{fmt(totalSpent / people.length, symbol)} avg per person</div>
-            )}
-            <h3 style={{marginTop: 16}}>Who owes what</h3>
-            {sortedPeople.map(p => {
-              const b = balances[p] || 0;
-              const cls = b > 0.005 ? 'amt-positive' : b < -0.005 ? 'amt-negative' : 'amt-zero';
-              const label = b > 0.005 ? 'is owed' : b < -0.005 ? 'owes' : 'settled up';
-              return (
-                <div className="balance-row" key={p}>
-                  <div className="person-tag">
-                    <div className="avatar" style={{background: colorForPerson(p, people)}}>{initials(p)}</div>
-                    <span className="balance-name">{p}</span>
-                  </div>
-                  <span className={'balance-amt mono ' + cls}>
-                    {b === 0 ? 'settled up' : `${label} ${fmt(Math.abs(b), symbol)}`}
-                  </span>
-                </div>
-              );
-            })}
+        <div className="tab-bar">
+          <button className={'tab-btn' + (activeTab === 'summary' ? ' active' : '')} onClick={() => setActiveTab('summary')}>Summary</button>
+          <button className={'tab-btn' + (activeTab === 'expenses' ? ' active' : '')} onClick={() => setActiveTab('expenses')}>Expenses</button>
+          <button className={'tab-btn' + (activeTab === 'people' ? ' active' : '')} onClick={() => setActiveTab('people')}>People</button>
+        </div>
 
-            {settlements.length > 0 && (
-              <>
-                <h3 style={{marginTop: 20}}>To settle up</h3>
-                <div className="settle-list">
-                  {settlements.map((s, i) => (
-                    <div className="settle-item" key={i}>
-                      <div className="avatar" style={{width: 22, height: 22, fontSize: 10, background: colorForPerson(s.from, people)}}>{initials(s.from)}</div>
-                      <strong>{s.from}</strong>
-                      <span className="settle-arrow">→</span>
-                      <div className="avatar" style={{width: 22, height: 22, fontSize: 10, background: colorForPerson(s.to, people)}}>{initials(s.to)}</div>
-                      <strong>{s.to}</strong>
-                      <span className="settle-amt mono">{fmt(s.amt, symbol)}</span>
-                    </div>
-                  ))}
+        {activeTab === 'summary' && (
+          people.length === 0 ? (
+            <div className="glass-card">
+              <h3>Get started</h3>
+              <p style={{fontSize: 13.5, color: 'var(--ink-dim)', margin: '0 0 14px'}}>
+                Add everyone on the trip in the People tab, then start logging expenses.
+              </p>
+            </div>
+          ) : (
+            <div className="glass-card">
+              <div className="total-spend-row">
+                <span className="total-spend-label">Total spent</span>
+                <span className="total-spend-amt mono">{fmt(totalSpent, symbol)}</span>
+              </div>
+              <div className="total-spend-sub">{fmt(totalSpent / people.length, symbol)} avg per person</div>
+
+              {expenses.length > 0 && (
+                <div className="spend-chart">
+                  <h3 style={{marginTop: 18}}>Who's paid what</h3>
+                  {chartPeople.map(p => {
+                    const amt = paidTotals[p] || 0;
+                    const pct = Math.max(4, Math.round((amt / maxPaid) * 100));
+                    return (
+                      <div className="spend-chart-row" key={p}>
+                        <div className="spend-chart-labels">
+                          <span className="spend-chart-name">{p}</span>
+                          <span className="spend-chart-amt mono">{fmt(amt, symbol)}</span>
+                        </div>
+                        <div className="spend-chart-track">
+                          <div className="spend-chart-fill" style={{width: pct + '%', background: colorForPerson(p, people)}}></div>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-              </>
-            )}
-          </div>
+              )}
+
+              <h3 style={{marginTop: 20}}>Who owes what</h3>
+              {sortedPeople.map(p => {
+                const b = balances[p] || 0;
+                const cls = b > 0.005 ? 'amt-positive' : b < -0.005 ? 'amt-negative' : 'amt-zero';
+                const label = b > 0.005 ? 'is owed' : b < -0.005 ? 'owes' : 'settled up';
+                return (
+                  <div className="balance-row" key={p}>
+                    <div className="person-tag">
+                      <div className="avatar" style={{background: colorForPerson(p, people)}}>{initials(p)}</div>
+                      <span className="balance-name">{p}</span>
+                    </div>
+                    <span className={'balance-amt mono ' + cls}>
+                      {b === 0 ? 'settled up' : `${label} ${fmt(Math.abs(b), symbol)}`}
+                    </span>
+                  </div>
+                );
+              })}
+
+              {settlements.length > 0 && (
+                <>
+                  <h3 style={{marginTop: 20}}>To settle up</h3>
+                  <div className="settle-list">
+                    {settlements.map((s, i) => (
+                      <div className="settle-item" key={i}>
+                        <div className="avatar" style={{width: 22, height: 22, fontSize: 10, background: colorForPerson(s.from, people)}}>{initials(s.from)}</div>
+                        <strong>{s.from}</strong>
+                        <span className="settle-arrow">→</span>
+                        <div className="avatar" style={{width: 22, height: 22, fontSize: 10, background: colorForPerson(s.to, people)}}>{initials(s.to)}</div>
+                        <strong>{s.to}</strong>
+                        <span className="settle-amt mono">{fmt(s.amt, symbol)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          )
         )}
 
-        <div className="section-title">People <span className="count">{people.length}</span></div>
-        <div className="people-row">
-          {people.map(p => (
-            <div className="chip" key={p}>
-              <div className="avatar" style={{background: colorForPerson(p, people)}}>{initials(p)}</div>
-              {p}
-              {confirmDeletePerson === p ? (
-                <>
-                  <button className="confirm-yes" onClick={() => requestRemovePerson(p)} title="Confirm remove">✓</button>
-                  <button onClick={() => setConfirmDeletePerson(null)} title="Cancel">×</button>
-                </>
-              ) : (
-                <button onClick={() => requestRemovePerson(p)} title="Remove">×</button>
-              )}
-            </div>
-          ))}
-        </div>
-        <div className="add-person-row">
-          <input
-            type="text" placeholder="Add a person…" value={newPersonName}
-            onChange={(e) => setNewPersonName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && addPerson()}
-          />
-          <button onClick={addPerson}>+</button>
-        </div>
-
-        <div className="section-title" style={{justifyContent: 'space-between'}}>
-          <span>Expenses <span className="count">{expenses.length}</span></span>
-          {(trip.archivedExpenses || []).length > 0 && (
-            <button className="archive-link" onClick={() => setShowArchive(true)}>
-              Archived ({(trip.archivedExpenses || []).length})
-            </button>
-          )}
-        </div>
-        {expenses.length === 0 ? (
-          <div className="empty-state">No expenses logged yet. Tap "Add expense" below to start the tab.</div>
-        ) : (
-          [...expenses].reverse().map(exp => (
-            <div
-              className="expense-ticket"
-              key={exp.id}
-              onClick={() => { setEditingExpense(exp); setShowAddExpense(true); }}
-            >
-              <div className="expense-top">
-                <span className="expense-desc">{exp.description || 'Expense'}</span>
-                <span className="expense-amt mono">{fmt(exp.amount, symbol)}</span>
-              </div>
-              <div className="expense-meta">
-                {formatExpenseDate(exp.ts)} · Paid by <strong>{exp.paidBy}</strong> · split {exp.splitAmong.length} way{exp.splitAmong.length !== 1 ? 's' : ''} ({exp.splitAmong.join(', ')})
-              </div>
-              {exp.originalCurrency && (
-                <div className="expense-fx-note">
-                  Originally {fmt(exp.originalAmount, symbolFor(exp.originalCurrency))} {exp.originalCurrency}
-                  {exp.conversionRate ? ` · 1 ${exp.originalCurrency} = ${symbol}${exp.conversionRate.toFixed(4)}` : ''}
+        {activeTab === 'people' && (
+          <>
+            <div className="section-title">People <span className="count">{people.length}</span></div>
+            <div className="people-row">
+              {people.map(p => (
+                <div className="chip" key={p}>
+                  <div className="avatar" style={{background: colorForPerson(p, people)}}>{initials(p)}</div>
+                  {p}
+                  {confirmDeletePerson === p ? (
+                    <>
+                      <button className="confirm-yes" onClick={() => requestRemovePerson(p)} title="Confirm remove">✓</button>
+                      <button onClick={() => setConfirmDeletePerson(null)} title="Cancel">×</button>
+                    </>
+                  ) : (
+                    <button onClick={() => requestRemovePerson(p)} title="Remove">×</button>
+                  )}
                 </div>
-              )}
-              {confirmDeleteExpenseId === exp.id ? (
-                <span className="expense-confirm-row" onClick={(e) => e.stopPropagation()}>
-                  <span className="expense-confirm-text">Move to archive?</span>
-                  <button className="expense-del confirm" onClick={() => requestDeleteExpense(exp.id)}>Yes, archive</button>
-                  <button className="expense-del" onClick={() => setConfirmDeleteExpenseId(null)}>Cancel</button>
-                </span>
-              ) : (
-                <button
-                  className="expense-del"
-                  onClick={(e) => { e.stopPropagation(); requestDeleteExpense(exp.id); }}
-                >
-                  archive
-                </button>
-              )}
+              ))}
             </div>
-          ))
+            <div className="add-person-row">
+              <input
+                type="text" placeholder="Add a person…" value={newPersonName}
+                onChange={(e) => setNewPersonName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && addPerson()}
+              />
+              <button onClick={addPerson}>+</button>
+            </div>
+          </>
+        )}
+
+        {activeTab === 'expenses' && (
+          <>
+            <div className="section-title">Expenses <span className="count">{expenses.length}</span></div>
+            {expenses.length === 0 ? (
+              <div className="empty-state">No expenses logged yet. Tap "Add expense" below to start the tab.</div>
+            ) : (
+              [...expenses].reverse().map(exp => (
+                <div
+                  className="expense-ticket"
+                  key={exp.id}
+                  onClick={() => { setEditingExpense(exp); setShowAddExpense(true); }}
+                >
+                  <div className="expense-top">
+                    <span className="expense-desc">{exp.description || 'Expense'}</span>
+                    <span className="expense-amt mono">{fmt(exp.amount, symbol)}</span>
+                  </div>
+                  <div className="expense-meta">
+                    {formatExpenseDate(exp.ts)} · Paid by <strong>{exp.paidBy}</strong> · split {exp.splitAmong.length} way{exp.splitAmong.length !== 1 ? 's' : ''} ({exp.splitAmong.join(', ')})
+                  </div>
+                  {exp.originalCurrency && (
+                    <div className="expense-fx-note">
+                      Originally {fmt(exp.originalAmount, symbolFor(exp.originalCurrency))} {exp.originalCurrency}
+                      {exp.conversionRate ? ` · 1 ${exp.originalCurrency} = ${symbol}${exp.conversionRate.toFixed(4)}` : ''}
+                    </div>
+                  )}
+                  {confirmDeleteExpenseId === exp.id ? (
+                    <span className="expense-confirm-row" onClick={(e) => e.stopPropagation()}>
+                      <span className="expense-confirm-text">Move to archive?</span>
+                      <button className="expense-del confirm" onClick={() => requestDeleteExpense(exp.id)}>Yes, archive</button>
+                      <button className="expense-del" onClick={() => setConfirmDeleteExpenseId(null)}>Cancel</button>
+                    </span>
+                  ) : (
+                    <button
+                      className="expense-del"
+                      onClick={(e) => { e.stopPropagation(); requestDeleteExpense(exp.id); }}
+                    >
+                      archive
+                    </button>
+                  )}
+                </div>
+              ))
+            )}
+          </>
         )}
       </div>
 
