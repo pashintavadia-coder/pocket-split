@@ -89,7 +89,15 @@
     margin: 0 0 6px; position: relative; z-index: 2;
   }
   .brand-title { font-size: 32px; margin: 0; letter-spacing: -0.02em; color: var(--ink); position: relative; z-index: 2; width: fit-content; }
-  .trip-name-tag { font-size: 14px; font-weight: 600; color: var(--ink-dim); margin: 4px 0 0; position: relative; z-index: 2; }
+  .trip-name-row {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    margin: 4px 0 0; position: relative; z-index: 2;
+  }
+  .trip-name-tag { font-size: 14px; font-weight: 600; color: var(--ink-dim); margin: 0; }
+  .switch-group-link {
+    background: none; border: none; color: var(--blue-600); font-size: 12px; font-weight: 700;
+    text-decoration: underline; cursor: pointer; padding: 0; margin-left: auto; flex-shrink: 0;
+  }
   .header-controls { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; position: relative; z-index: 2; }
   .pill {
     display: inline-flex; align-items: center; gap: 6px;
@@ -641,27 +649,22 @@ function ManageCurrenciesModal({ pinned, onSave, onClose }) {
   );
 }
 
-function TripSettingsModal({ tripName, currency, symbol, archivedCount, onOpenCurrencyPicker, onOpenManageCurrencies, onOpenArchive, onSwitchTrip, onClose }) {
+function TripSettingsModal({ tripName, currency, symbol, onOpenCurrencyPicker, onOpenManageCurrencies, onClose }) {
   return (
     <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal-sheet">
-        <h3 className="display">Trip settings</h3>
-        {tripName && <p className="manage-currencies-hint" style={{marginTop: -8}}>{tripName}</p>}
+        <h3 className="display">Group settings</h3>
+        <p className="manage-currencies-hint">
+          {tripName ? `Settings for "${tripName}" — these apply for everyone in the group.` : 'These settings apply for everyone in the group.'}
+        </p>
 
         <div className="settings-option-list">
           <button className="invite-option" onClick={onOpenCurrencyPicker}>
-            <span>Trip currency</span>
+            <span>Group currency</span>
             <span className="settings-option-value mono">{symbol} {currency}</span>
           </button>
           <button className="invite-option" onClick={onOpenManageCurrencies}>
             <span>Manage pinned currencies</span>
-          </button>
-          <button className="invite-option" onClick={onOpenArchive}>
-            <span>Archived expenses</span>
-            {archivedCount > 0 && <span className="settings-option-value">{archivedCount}</span>}
-          </button>
-          <button className="invite-option" onClick={onSwitchTrip}>
-            <span>Switch trip</span>
           </button>
         </div>
 
@@ -1230,7 +1233,10 @@ function App() {
       <div className="header">
         <FanStack />
         <h1 className="brand-title display">Pocket Split</h1>
-        {trip.name && <p className="trip-name-tag">{trip.name}</p>}
+        <div className="trip-name-row">
+          {trip.name && <p className="trip-name-tag">{trip.name}</p>}
+          <button className="switch-group-link" onClick={leaveTrip}>Switch group</button>
+        </div>
         <div className="header-controls">
           <button className="pill invite-pill" onClick={shareInvite} style={{cursor: 'pointer'}}>
             Invite
@@ -1240,7 +1246,7 @@ function App() {
             {isOnline ? 'CODE' : 'OFFLINE'}&nbsp;<strong>{tripCode}</strong>
             <button onClick={() => { navigator.clipboard && navigator.clipboard.writeText(tripCode); showToast('Code copied'); }}>copy</button>
           </div>
-          <button className="settings-gear-btn" onClick={() => setShowTripSettings(true)} title="Trip settings">⚙</button>
+          <button className="settings-gear-btn" onClick={() => setShowTripSettings(true)} title="Group settings">⚙</button>
         </div>
       </div>
 
@@ -1258,11 +1264,8 @@ function App() {
           tripName={trip.name}
           currency={currency}
           symbol={symbol}
-          archivedCount={(trip.archivedExpenses || []).length}
           onOpenCurrencyPicker={() => { setShowTripSettings(false); setShowHeaderCurrencyPicker(true); }}
           onOpenManageCurrencies={() => { setShowTripSettings(false); setShowManageCurrencies(true); }}
-          onOpenArchive={() => { setShowTripSettings(false); setShowArchive(true); }}
-          onSwitchTrip={() => { setShowTripSettings(false); leaveTrip(); }}
           onClose={() => setShowTripSettings(false)}
         />
       )}
@@ -1412,7 +1415,14 @@ function App() {
 
         {activeTab === 'expenses' && (
           <>
-            <div className="section-title">Expenses <span className="count">{expenses.length}</span></div>
+            <div className="section-title" style={{justifyContent: 'space-between'}}>
+              <span>Expenses <span className="count">{expenses.length}</span></span>
+              {(trip.archivedExpenses || []).length > 0 && (
+                <button className="archive-link" onClick={() => setShowArchive(true)}>
+                  Archived ({(trip.archivedExpenses || []).length})
+                </button>
+              )}
+            </div>
             {expenses.length === 0 ? (
               <div className="empty-state">No expenses logged yet. Tap "Add expense" below to start the tab.</div>
             ) : (
