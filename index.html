@@ -172,6 +172,22 @@
 
   .section-title { font-size: 12.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-faint); margin: 26px 2px 12px; display: flex; align-items: center; gap: 8px; }
   .section-title .count { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 1px 8px; font-size: 11px; color: var(--ink-dim); box-shadow: var(--shadow-sm); }
+  .archive-link {
+    background: none; border: none; color: var(--blue-600); font-size: 11.5px; font-weight: 700;
+    text-decoration: underline; cursor: pointer; padding: 0; text-transform: none; letter-spacing: normal;
+  }
+  .archived-item {
+    background: var(--surface-sunken); border: 1px solid var(--border); border-radius: 14px;
+    padding: 13px 14px; margin-bottom: 10px; opacity: 0.85;
+  }
+  .archived-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .archived-desc { font-size: 14.5px; font-weight: 600; color: var(--ink-dim); text-decoration: line-through; }
+  .archived-amt { font-size: 14.5px; font-weight: 700; color: var(--ink-faint); }
+  .archived-meta { font-size: 12px; color: var(--ink-faint); margin-top: 5px; }
+  .restore-btn {
+    background: none; border: none; color: var(--blue-600); font-size: 11.5px; font-weight: 700;
+    text-decoration: underline; cursor: pointer; padding: 0; margin-top: 8px;
+  }
 
   .people-row { display: flex; flex-wrap: wrap; gap: 9px; margin-bottom: 4px; }
   .chip { display: inline-flex; align-items: center; gap: 7px; background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 6px 10px 6px 8px; font-size: 13.5px; font-weight: 600; color: var(--ink); box-shadow: var(--shadow-sm); }
@@ -583,6 +599,40 @@ function ManageCurrenciesModal({ pinned, onSave, onClose }) {
   );
 }
 
+function ArchiveModal({ archivedExpenses, symbol, onRestore, onClose }) {
+  const sorted = [...archivedExpenses].sort((a, b) => (b.archivedAt || 0) - (a.archivedAt || 0));
+
+  return (
+    <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal-sheet">
+        <h3 className="display">Archived expenses</h3>
+        <p className="manage-currencies-hint">
+          These don't count toward anyone's balance. Restore one if it was archived by mistake.
+        </p>
+        {sorted.length === 0 ? (
+          <div className="empty-state">Nothing archived yet.</div>
+        ) : (
+          sorted.map((exp) => (
+            <div className="archived-item" key={exp.id}>
+              <div className="archived-top">
+                <span className="archived-desc">{exp.description || 'Expense'}</span>
+                <span className="archived-amt mono">{fmt(exp.amount, symbol)}</span>
+              </div>
+              <div className="archived-meta">
+                Paid by {exp.paidBy} · split {exp.splitAmong.length} way{exp.splitAmong.length !== 1 ? 's' : ''} · archived {exp.archivedAt ? new Date(exp.archivedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''}
+              </div>
+              <button className="restore-btn" onClick={() => onRestore(exp.id)}>Restore</button>
+            </div>
+          ))
+        )}
+        <div className="modal-actions">
+          <button className="btn btn-outline" onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function FanStack() {
   return (
     <div className="fan-stack">
@@ -594,7 +644,7 @@ function FanStack() {
   );
 }
 
-const EMPTY_TRIP = { people: [], expenses: [], currency: 'USD', name: null, pinnedCurrencies: [] };
+const EMPTY_TRIP = { people: [], expenses: [], archivedExpenses: [], currency: 'USD', name: null, pinnedCurrencies: [] };
 const STORAGE_KEY = 'pocketSplitTripCode';
 const HISTORY_KEY = 'pocketSplitTripHistory';
 const HISTORY_LIMIT = 20;
@@ -637,6 +687,7 @@ function App() {
   const [showNewTripCurrencyPicker, setShowNewTripCurrencyPicker] = useState(false);
   const [showHeaderCurrencyPicker, setShowHeaderCurrencyPicker] = useState(false);
   const [showManageCurrencies, setShowManageCurrencies] = useState(false);
+  const [showArchive, setShowArchive] = useState(false);
   const [tripHistory, setTripHistory] = useState(() => loadTripHistory());
   const [loading, setLoading] = useState(false);
   const [trip, setTrip] = useState(null);
@@ -837,9 +888,31 @@ function App() {
   };
 
   const deleteExpense = (id) => {
-    mutate(prev => ({ ...prev, expenses: prev.expenses.filter(e => e.id !== id) }));
+    mutate(prev => {
+      const target = prev.expenses.find(e => e.id === id);
+      if (!target) return prev;
+      return {
+        ...prev,
+        expenses: prev.expenses.filter(e => e.id !== id),
+        archivedExpenses: [...(prev.archivedExpenses || []), { ...target, archivedAt: Date.now() }],
+      };
+    });
     setConfirmDeleteExpenseId(null);
-    showToast('Expense removed');
+    showToast('Expense archived');
+  };
+
+  const restoreExpense = (id) => {
+    mutate(prev => {
+      const target = (prev.archivedExpenses || []).find(e => e.id === id);
+      if (!target) return prev;
+      const { archivedAt, ...restored } = target;
+      return {
+        ...prev,
+        archivedExpenses: (prev.archivedExpenses || []).filter(e => e.id !== id),
+        expenses: [...prev.expenses, restored],
+      };
+    });
+    showToast('Expense restored');
   };
 
   const requestDeleteExpense = (id) => {
@@ -1035,6 +1108,15 @@ function App() {
         />
       )}
 
+      {showArchive && (
+        <ArchiveModal
+          archivedExpenses={trip.archivedExpenses || []}
+          symbol={symbol}
+          onRestore={(id) => restoreExpense(id)}
+          onClose={() => setShowArchive(false)}
+        />
+      )}
+
       <div className="body-pad">
         {people.length === 0 ? (
           <div className="glass-card">
@@ -1116,7 +1198,14 @@ function App() {
           <button onClick={addPerson}>+</button>
         </div>
 
-        <div className="section-title">Expenses <span className="count">{expenses.length}</span></div>
+        <div className="section-title" style={{justifyContent: 'space-between'}}>
+          <span>Expenses <span className="count">{expenses.length}</span></span>
+          {(trip.archivedExpenses || []).length > 0 && (
+            <button className="archive-link" onClick={() => setShowArchive(true)}>
+              Archived ({(trip.archivedExpenses || []).length})
+            </button>
+          )}
+        </div>
         {expenses.length === 0 ? (
           <div className="empty-state">No expenses logged yet. Tap "Add expense" below to start the tab.</div>
         ) : (
@@ -1141,8 +1230,8 @@ function App() {
               )}
               {confirmDeleteExpenseId === exp.id ? (
                 <span className="expense-confirm-row" onClick={(e) => e.stopPropagation()}>
-                  <span className="expense-confirm-text">Remove this expense?</span>
-                  <button className="expense-del confirm" onClick={() => requestDeleteExpense(exp.id)}>Yes, remove</button>
+                  <span className="expense-confirm-text">Move to archive?</span>
+                  <button className="expense-del confirm" onClick={() => requestDeleteExpense(exp.id)}>Yes, archive</button>
                   <button className="expense-del" onClick={() => setConfirmDeleteExpenseId(null)}>Cancel</button>
                 </span>
               ) : (
@@ -1150,7 +1239,7 @@ function App() {
                   className="expense-del"
                   onClick={(e) => { e.stopPropagation(); requestDeleteExpense(exp.id); }}
                 >
-                  remove
+                  archive
                 </button>
               )}
             </div>
