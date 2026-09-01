@@ -383,6 +383,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 
 <script type="text/babel">
 const { useState, useEffect, useCallback, useRef } = React;
@@ -707,7 +708,7 @@ function ManageCurrenciesModal({ pinned, onSave, onClose }) {
   );
 }
 
-function TripSettingsModal({ tripName, currency, symbol, onOpenCurrencyPicker, onOpenManageCurrencies, onClose }) {
+function TripSettingsModal({ tripName, currency, symbol, onOpenCurrencyPicker, onOpenManageCurrencies, onExportCSV, onExportPDF, onClose }) {
   return (
     <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal-sheet">
@@ -723,6 +724,12 @@ function TripSettingsModal({ tripName, currency, symbol, onOpenCurrencyPicker, o
           </button>
           <button className="invite-option" onClick={onOpenManageCurrencies}>
             <span>Manage pinned currencies</span>
+          </button>
+          <button className="invite-option" onClick={onExportCSV}>
+            <span>Export as Excel (CSV)</span>
+          </button>
+          <button className="invite-option" onClick={onExportPDF}>
+            <span>Export as PDF</span>
           </button>
         </div>
 
@@ -1282,6 +1289,90 @@ function App() {
   const maxPaid = Math.max(1, ...people.map(p => paidTotals[p] || 0));
   const chartPeople = [...people].sort((a, b) => (paidTotals[b] || 0) - (paidTotals[a] || 0));
 
+  const exportFileName = (ext) => {
+    const base = (trip.name || tripCode).replace(/[^a-z0-9]+/gi, '-').toLowerCase();
+    return `pocket-split-${base}.${ext}`;
+  };
+
+  const exportCSV = () => {
+    const header = ['Date', 'Description', `Amount (${currency})`, 'Original Amount', 'Original Currency', 'Paid By', 'Split Among'];
+    const rows = expenses.map((e) => [
+      e.ts ? new Date(e.ts).toLocaleDateString() : '',
+      e.description || 'Expense',
+      e.amount.toFixed(2),
+      e.originalAmount != null ? e.originalAmount.toFixed(2) : '',
+      e.originalCurrency || '',
+      e.paidBy,
+      e.splitAmong.join('; '),
+    ]);
+    const escapeCell = (v) => `"${String(v).replace(/"/g, '""')}"`;
+    const csv = [header, ...rows].map((r) => r.map(escapeCell).join(',')).join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = exportFileName('csv');
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    showToast('Excel file downloaded');
+  };
+
+  const exportPDF = () => {
+    if (!window.jspdf) { showToast("PDF export isn't ready yet — try again in a moment"); return; }
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const left = 14;
+    let y = 20;
+    const lineGap = 6;
+    const addLine = (text, size = 10) => {
+      if (y > 280) { doc.addPage(); y = 20; }
+      doc.setFontSize(size);
+      doc.text(text, left, y);
+      y += lineGap;
+    };
+
+    doc.setFontSize(18);
+    doc.text(trip.name || 'Pocket Split', left, y);
+    y += 8;
+    addLine(`Code: ${tripCode}  ·  Generated ${new Date().toLocaleDateString()}`, 9);
+    y += 2;
+
+    addLine(`Total spent: ${symbol}${totalSpent.toFixed(2)}`, 13);
+    addLine(`Average per person: ${symbol}${(totalSpent / (people.length || 1)).toFixed(2)}`, 10);
+    y += 4;
+
+    addLine('Balances', 13);
+    sortedPeople.forEach((p) => {
+      const b = balances[p] || 0;
+      const line = b === 0 ? `${p}: settled up` : `${p}: ${b > 0 ? 'is owed' : 'owes'} ${symbol}${Math.abs(b).toFixed(2)}`;
+      addLine(line, 10);
+    });
+    y += 4;
+
+    if (settlements.length > 0) {
+      addLine('To settle up', 13);
+      settlements.forEach((s) => {
+        addLine(`${s.from} -> ${s.to}: ${symbol}${s.amt.toFixed(2)}`, 10);
+      });
+      y += 4;
+    }
+
+    addLine('Expenses', 13);
+    if (expenses.length === 0) {
+      addLine('No expenses logged.', 10);
+    } else {
+      expenses.forEach((e) => {
+        const date = e.ts ? new Date(e.ts).toLocaleDateString() : '';
+        addLine(`${date}  ${e.description || 'Expense'}  —  ${symbol}${e.amount.toFixed(2)}  (paid by ${e.paidBy})`, 9);
+      });
+    }
+
+    doc.save(exportFileName('pdf'));
+    showToast('PDF downloaded');
+  };
+
   const formatExpenseDate = (ts) => {
     if (!ts) return '';
     const d = new Date(ts);
@@ -1329,6 +1420,8 @@ function App() {
           symbol={symbol}
           onOpenCurrencyPicker={() => { setShowTripSettings(false); setShowHeaderCurrencyPicker(true); }}
           onOpenManageCurrencies={() => { setShowTripSettings(false); setShowManageCurrencies(true); }}
+          onExportCSV={() => { exportCSV(); setShowTripSettings(false); }}
+          onExportPDF={() => { exportPDF(); setShowTripSettings(false); }}
           onClose={() => setShowTripSettings(false)}
         />
       )}
