@@ -95,8 +95,11 @@
   }
   .trip-name-tag { font-size: 14px; font-weight: 600; color: var(--ink-dim); margin: 0; }
   .switch-group-link {
-    background: none; border: none; color: var(--blue-600); font-size: 12px; font-weight: 700;
-    text-decoration: underline; cursor: pointer; padding: 0; margin-left: auto; flex-shrink: 0;
+    display: inline-flex; align-items: center;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
+    padding: 4px 11px; box-shadow: var(--shadow-sm);
+    color: var(--blue-600); font-size: 11px; font-weight: 700;
+    text-decoration: none; cursor: pointer; margin-left: auto; flex-shrink: 0;
   }
   .header-controls { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; position: relative; z-index: 2; }
   .pill {
@@ -181,8 +184,11 @@
   .section-title { font-size: 12.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--ink-faint); margin: 26px 2px 12px; display: flex; align-items: center; gap: 8px; }
   .section-title .count { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 1px 8px; font-size: 11px; color: var(--ink-dim); box-shadow: var(--shadow-sm); }
   .archive-link {
-    background: none; border: none; color: var(--blue-600); font-size: 11.5px; font-weight: 700;
-    text-decoration: underline; cursor: pointer; padding: 0; text-transform: none; letter-spacing: normal;
+    display: inline-flex; align-items: center;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
+    padding: 4px 11px; box-shadow: var(--shadow-sm);
+    color: var(--blue-600); font-size: 11px; font-weight: 700;
+    text-decoration: none; cursor: pointer; text-transform: none; letter-spacing: normal;
   }
   .archived-item {
     background: var(--surface-sunken); border: 1px solid var(--border); border-radius: 14px;
@@ -253,7 +259,10 @@
     padding: 10px 6px; border-radius: 10px; font-size: 14px; color: var(--ink);
   }
   .currency-row:active { background: var(--surface-sunken); }
+  .currency-row.picked { background: var(--blue-tint); }
+  .currency-row:disabled { cursor: not-allowed; }
   .currency-row-symbol { width: 34px; flex-shrink: 0; color: var(--ink-dim); font-size: 13px; }
+  .currency-row-check { width: 20px; flex-shrink: 0; color: var(--blue-600); font-weight: 800; font-size: 15px; text-align: center; }
   .currency-row-code { width: 46px; flex-shrink: 0; font-weight: 700; }
   .currency-row-name { color: var(--ink-dim); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -550,8 +559,9 @@ function simplifySettlements(balances) {
   return txns;
 }
 
-function CurrencyPickerModal({ pinned = [], excludeCodes = [], onSelect, onClose, title }) {
+function CurrencyPickerModal({ pinned = [], excludeCodes = [], onSelect, onSelectMultiple, onClose, title, multiSelect = false, existingCount = 0, maxSelect = 5 }) {
   const [query, setQuery] = useState('');
+  const [picked, setPicked] = useState([]);
   const q = query.trim().toLowerCase();
 
   const matches = (c) => !q || c.code.toLowerCase().includes(q) || c.name.toLowerCase().includes(q);
@@ -564,18 +574,52 @@ function CurrencyPickerModal({ pinned = [], excludeCodes = [], onSelect, onClose
     .filter((c) => !pinnedSet.has(c.code))
     .sort((a, b) => a.code.localeCompare(b.code));
 
-  const Row = (c) => (
-    <button key={c.code} className="currency-row" onClick={() => onSelect(c.code)}>
-      <span className="currency-row-symbol mono">{c.symbol}</span>
-      <span className="currency-row-code mono">{c.code}</span>
-      <span className="currency-row-name">{c.name}</span>
-    </button>
-  );
+  const atLimit = existingCount + picked.length >= maxSelect;
+
+  const togglePick = (code) => {
+    setPicked((prev) => {
+      if (prev.includes(code)) return prev.filter((c) => c !== code);
+      if (atLimit) return prev; // already at the cap, ignore further taps
+      return [...prev, code];
+    });
+  };
+
+  const Row = (c) => {
+    if (!multiSelect) {
+      return (
+        <button key={c.code} className="currency-row" onClick={() => onSelect(c.code)}>
+          <span className="currency-row-symbol mono">{c.symbol}</span>
+          <span className="currency-row-code mono">{c.code}</span>
+          <span className="currency-row-name">{c.name}</span>
+        </button>
+      );
+    }
+    const isPicked = picked.includes(c.code);
+    const disabled = !isPicked && atLimit;
+    return (
+      <button
+        key={c.code}
+        className={'currency-row' + (isPicked ? ' picked' : '')}
+        onClick={() => togglePick(c.code)}
+        disabled={disabled}
+        style={disabled ? { opacity: 0.4 } : undefined}
+      >
+        <span className="currency-row-check">{isPicked ? '✓' : ''}</span>
+        <span className="currency-row-code mono">{c.code}</span>
+        <span className="currency-row-name">{c.name}</span>
+      </button>
+    );
+  };
 
   return (
     <div className="modal-backdrop currency-picker-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal-sheet currency-picker-sheet">
         <h3 className="display">{title || 'Choose a currency'}</h3>
+        {multiSelect && (
+          <p className="manage-currencies-hint" style={{marginTop: -8}}>
+            Tap to select up to {maxSelect} total{existingCount > 0 ? ` (${existingCount} already added)` : ''}, then tap Done.
+          </p>
+        )}
         <input
           type="text"
           placeholder="Search by name or code…"
@@ -600,6 +644,15 @@ function CurrencyPickerModal({ pinned = [], excludeCodes = [], onSelect, onClose
         </div>
         <div className="modal-actions">
           <button className="btn btn-outline" onClick={onClose}>Cancel</button>
+          {multiSelect && (
+            <button
+              className="btn btn-primary"
+              disabled={picked.length === 0}
+              onClick={() => onSelectMultiple(picked)}
+            >
+              Done{picked.length > 0 ? ` (${picked.length})` : ''}
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -611,17 +664,17 @@ function ManageCurrenciesModal({ pinned, onSave, onClose }) {
   const [showPicker, setShowPicker] = useState(false);
 
   const remove = (code) => setList((prev) => prev.filter((c) => c !== code));
-  const add = (code) => {
-    if (!list.includes(code)) setList((prev) => [...prev, code]);
+  const addMany = (codes) => {
+    setList((prev) => [...prev, ...codes.filter((c) => !prev.includes(c))].slice(0, 5));
     setShowPicker(false);
   };
 
   return (
     <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal-sheet">
-        <h3 className="display">Trip currencies</h3>
+        <h3 className="display">Group currencies</h3>
         <p className="manage-currencies-hint">
-          Pin the currencies your group uses most on this trip — they'll show first whenever anyone picks a currency here.
+          Pin up to 5 currencies your group uses most — they'll show first whenever anyone picks a currency here. Add, remove, or change these anytime.
         </p>
         <div className="pinned-chip-row">
           {list.map((code) => (
@@ -630,7 +683,9 @@ function ManageCurrenciesModal({ pinned, onSave, onClose }) {
               <button onClick={() => remove(code)}>×</button>
             </div>
           ))}
-          <button className="add-currency-btn" onClick={() => setShowPicker(true)}>+ Add</button>
+          {list.length < 5 && (
+            <button className="add-currency-btn" onClick={() => setShowPicker(true)}>+ Add</button>
+          )}
         </div>
         <div className="modal-actions">
           <button className="btn btn-outline" onClick={onClose}>Cancel</button>
@@ -640,8 +695,11 @@ function ManageCurrenciesModal({ pinned, onSave, onClose }) {
       {showPicker && (
         <CurrencyPickerModal
           excludeCodes={list}
-          title="Add a currency"
-          onSelect={add}
+          existingCount={list.length}
+          maxSelect={5}
+          multiSelect
+          title="Add currencies"
+          onSelectMultiple={addMany}
           onClose={() => setShowPicker(false)}
         />
       )}
@@ -1102,7 +1160,7 @@ function App() {
           />
         </div>
         <div className="field">
-          <span className="field-label">Currencies you'll use (optional)</span>
+          <span className="field-label">Currencies you'll use (optional, up to 5)</span>
           <div className="pinned-chip-row">
             {newTripCurrencies.map((code) => (
               <div className="chip" key={code}>
@@ -1110,16 +1168,18 @@ function App() {
                 <button onClick={() => setNewTripCurrencies((prev) => prev.filter((c) => c !== code))}>×</button>
               </div>
             ))}
-            <button className="add-currency-btn" onClick={() => setShowNewTripCurrencyPicker(true)}>+ Add</button>
+            {newTripCurrencies.length < 5 && (
+              <button className="add-currency-btn" onClick={() => setShowNewTripCurrencyPicker(true)}>+ Add</button>
+            )}
           </div>
           {newTripCurrencies.length > 0 && (
             <div style={{ fontSize: 11.5, color: 'var(--ink-faint)', marginTop: 8 }}>
-              First one picked ({newTripCurrencies[0]}) becomes the trip's main currency — you can change this anytime.
+              First one picked ({newTripCurrencies[0]}) becomes the group's main currency — you can change this anytime.
             </div>
           )}
         </div>
         <button className="btn btn-primary" onClick={createTrip} disabled={loading}>
-          Start a new trip
+          Start a New Group
         </button>
         <div className="or-divider">or join with a code</div>
         <div className="field">
@@ -1132,7 +1192,7 @@ function App() {
           />
         </div>
         <button className="btn btn-outline" onClick={joinTrip} disabled={loading}>
-          Join trip
+          Join Group
         </button>
 
         {tripHistory.length > 0 && (
@@ -1162,9 +1222,12 @@ function App() {
       {showNewTripCurrencyPicker && (
         <CurrencyPickerModal
           excludeCodes={newTripCurrencies}
-          title="Add a currency"
-          onSelect={(code) => {
-            setNewTripCurrencies((prev) => (prev.includes(code) ? prev : [...prev, code]));
+          existingCount={newTripCurrencies.length}
+          maxSelect={5}
+          multiSelect
+          title="Add currencies"
+          onSelectMultiple={(codes) => {
+            setNewTripCurrencies((prev) => [...prev, ...codes].slice(0, 5));
             setShowNewTripCurrencyPicker(false);
           }}
           onClose={() => setShowNewTripCurrencyPicker(false)}
