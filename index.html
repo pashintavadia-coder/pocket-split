@@ -89,6 +89,7 @@
     margin: 0 0 6px; position: relative; z-index: 2;
   }
   .brand-title { font-size: 32px; margin: 0; letter-spacing: -0.02em; color: var(--ink); position: relative; z-index: 2; width: fit-content; }
+  .trip-name-tag { font-size: 14px; font-weight: 600; color: var(--ink-dim); margin: 4px 0 0; position: relative; z-index: 2; }
   .header-controls { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; position: relative; z-index: 2; }
   .pill {
     display: inline-flex; align-items: center; gap: 6px;
@@ -130,6 +131,22 @@
   .btn-stamp { background: var(--ink); color: #fff; font-weight: 700; box-shadow: var(--shadow-md); }
   .or-divider { display: flex; align-items: center; gap: 10px; margin: 22px 0; color: var(--ink-faint); font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600; }
   .or-divider::before, .or-divider::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+
+  .history-list { display: flex; flex-direction: column; gap: 8px; }
+  .history-item {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    padding: 12px 13px; cursor: pointer; box-shadow: var(--shadow-sm);
+  }
+  .history-item:active { background: var(--surface-sunken); }
+  .history-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .history-name { font-size: 14.5px; font-weight: 700; color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .history-meta { font-size: 11px; color: var(--ink-faint); }
+  .history-remove {
+    background: var(--surface-sunken); border: none; border-radius: 50%;
+    width: 24px; height: 24px; flex-shrink: 0; color: var(--ink-faint);
+    cursor: pointer; font-size: 14px; line-height: 24px; text-align: center; padding: 0;
+  }
 
   .glass-card { background: var(--surface); border: 1px solid var(--border); border-radius: 18px; padding: 18px 16px 8px; margin-bottom: 18px; box-shadow: var(--shadow-sm); }
   .total-spend-row { display: flex; justify-content: space-between; align-items: baseline; }
@@ -321,8 +338,37 @@ function FanStack() {
   );
 }
 
-const EMPTY_TRIP = { people: [], expenses: [], currency: 'USD' };
+const EMPTY_TRIP = { people: [], expenses: [], currency: 'USD', name: null };
 const STORAGE_KEY = 'pocketSplitTripCode';
+const HISTORY_KEY = 'pocketSplitTripHistory';
+const HISTORY_LIMIT = 20;
+
+function loadTripHistory() {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    const list = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveTripHistory(list) {
+  try { localStorage.setItem(HISTORY_KEY, JSON.stringify(list)); } catch (e) {}
+}
+
+function timeAgo(ts) {
+  if (!ts) return '';
+  const diffMs = Date.now() - ts;
+  const mins = Math.round(diffMs / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(ts).toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+}
 
 function App() {
   const [fbReady, setFbReady] = useState(false);
@@ -330,6 +376,8 @@ function App() {
     try { return localStorage.getItem(STORAGE_KEY) || null; } catch (e) { return null; }
   });
   const [codeInput, setCodeInput] = useState('');
+  const [newTripName, setNewTripName] = useState('');
+  const [tripHistory, setTripHistory] = useState(() => loadTripHistory());
   const [loading, setLoading] = useState(false);
   const [trip, setTrip] = useState(null);
   const [toast, setToast] = useState('');
@@ -377,6 +425,7 @@ function App() {
         const data = snap.data();
         if (!data.currency) data.currency = 'USD';
         setTrip(data);
+        upsertHistory({ code: tripCode, name: data.name || null, currency: data.currency, lastVisited: Date.now() });
       } else {
         // A remembered code that no longer points to a real trip (deleted,
         // typo'd into storage some other way, etc). Don't get stuck on a
@@ -408,6 +457,23 @@ function App() {
     try { localStorage.setItem(STORAGE_KEY, code); } catch (e) {}
   };
 
+  const upsertHistory = (entry) => {
+    setTripHistory((prev) => {
+      const filtered = prev.filter((e) => e.code !== entry.code);
+      const next = [entry, ...filtered].slice(0, HISTORY_LIMIT);
+      saveTripHistory(next);
+      return next;
+    });
+  };
+
+  const removeFromHistory = (code) => {
+    setTripHistory((prev) => {
+      const next = prev.filter((e) => e.code !== code);
+      saveTripHistory(next);
+      return next;
+    });
+  };
+
   const leaveTrip = () => {
     try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
     setTripCode(null);
@@ -421,8 +487,11 @@ function App() {
       'ABCDEFGHJKMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]
     ).join('');
     const { db, doc, setDoc } = window.__firebase;
-    await setDoc(doc(db, 'trips', code), EMPTY_TRIP);
+    const name = newTripName.trim() || null;
+    await setDoc(doc(db, 'trips', code), { ...EMPTY_TRIP, name });
     rememberTrip(code);
+    upsertHistory({ code, name, currency: 'USD', lastVisited: Date.now() });
+    setNewTripName('');
     setTripCode(code);
   };
 
@@ -438,10 +507,28 @@ function App() {
       showToast('No trip found with that code');
       return;
     }
+    const data = snap.data();
     rememberTrip(c);
+    upsertHistory({ code: c, name: data.name || null, currency: data.currency || 'USD', lastVisited: Date.now() });
     setTripCode(c);
   };
 
+  const jumpToTrip = async (code) => {
+    if (!window.__firebase) { showToast('Firebase is not configured yet'); return; }
+    setLoading(true);
+    const { db, doc, getDoc } = window.__firebase;
+    const snap = await getDoc(doc(db, 'trips', code));
+    if (!snap.exists()) {
+      setLoading(false);
+      removeFromHistory(code);
+      showToast("That trip's gone — removed it from your list");
+      return;
+    }
+    const data = snap.data();
+    rememberTrip(code);
+    upsertHistory({ code, name: data.name || null, currency: data.currency || 'USD', lastVisited: Date.now() });
+    setTripCode(code);
+  };
 
   const mutate = (updater) => {
     if (!trip) return;
@@ -529,6 +616,14 @@ function App() {
         <p className="eyebrow mono">POCKET SPLIT</p>
         <h2 className="display">Split it, don't sweat it</h2>
         <p>Start a new trip and share the code with your group — or join one they already started. Everyone with the code sees the same running tab, live.</p>
+        <div className="field">
+          <span className="field-label">Name this trip (optional)</span>
+          <input
+            type="text" placeholder="e.g. Goa 2026" value={newTripName}
+            onChange={(e) => setNewTripName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && createTrip()}
+          />
+        </div>
         <button className="btn btn-primary" onClick={createTrip} disabled={loading}>
           Start a new trip
         </button>
@@ -545,6 +640,29 @@ function App() {
         <button className="btn btn-outline" onClick={joinTrip} disabled={loading}>
           Join trip
         </button>
+
+        {tripHistory.length > 0 && (
+          <>
+            <div className="section-title" style={{marginTop: 30}}>Your trips</div>
+            <div className="history-list">
+              {tripHistory.map((h) => (
+                <div className="history-item" key={h.code} onClick={() => jumpToTrip(h.code)}>
+                  <div className="history-main">
+                    <span className="history-name">{h.name || h.code}</span>
+                    <span className="history-meta mono">{h.name ? h.code : ''} {h.name ? '·' : ''} {timeAgo(h.lastVisited)}</span>
+                  </div>
+                  <button
+                    className="history-remove"
+                    onClick={(e) => { e.stopPropagation(); removeFromHistory(h.code); }}
+                    title="Remove from this list"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
       </div>
     );
   }
@@ -587,6 +705,7 @@ function App() {
       <div className="header">
         <FanStack />
         <h1 className="brand-title display">Pocket Split</h1>
+        {trip.name && <p className="trip-name-tag">{trip.name}</p>}
         <div className="header-controls">
           <div className="pill">
             <span className={'live-dot' + (isOnline ? '' : ' offline')}></span>
