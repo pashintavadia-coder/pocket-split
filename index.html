@@ -250,6 +250,21 @@
   .currency-row-name { color: var(--ink-dim); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
   .manage-currencies-hint { font-size: 13px; color: var(--ink-dim); line-height: 1.5; margin: 0 0 16px; }
+
+  .invite-pill { background: var(--blue-600); border-color: var(--blue-600); color: #fff; font-weight: 700; }
+  .invite-option-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+  .invite-option {
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--surface); border: 1.5px solid var(--border); border-radius: 12px;
+    padding: 13px 15px; font-size: 14.5px; font-weight: 600; color: var(--ink);
+    text-decoration: none; cursor: pointer; width: 100%; text-align: left;
+  }
+  .invite-option:active { background: var(--surface-sunken); }
+  .link-box {
+    font-family: 'JetBrains Mono', monospace; font-size: 11.5px; color: var(--ink-dim);
+    background: var(--surface-sunken); border: 1px solid var(--border-soft); border-radius: 10px;
+    padding: 10px 11px; word-break: break-all; margin-bottom: 4px;
+  }
   .pinned-chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
   .add-currency-btn {
     background: var(--blue-tint); border: 1.5px dashed var(--blue-tint-border); color: var(--blue-700);
@@ -599,6 +614,49 @@ function ManageCurrenciesModal({ pinned, onSave, onClose }) {
   );
 }
 
+function InviteFallbackModal({ url, text, showToast, onClose }) {
+  const waLink = `https://wa.me/?text=${encodeURIComponent(text + '\n' + url)}`;
+  const mailLink = `mailto:?subject=${encodeURIComponent(text)}&body=${encodeURIComponent(text + '\n\n' + url)}`;
+  const smsLink = `sms:?&body=${encodeURIComponent(text + ' ' + url)}`;
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast('Link copied');
+      onClose();
+    } catch (e) {
+      showToast("Couldn't copy — long-press the link below to copy it manually");
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal-sheet">
+        <h3 className="display">Invite to this trip</h3>
+        <p className="manage-currencies-hint">Whoever opens this link joins the trip instantly — no code to type.</p>
+        <div className="invite-option-list">
+          <a className="invite-option" href={waLink} target="_blank" rel="noopener noreferrer" onClick={onClose}>
+            <span>WhatsApp</span>
+          </a>
+          <a className="invite-option" href={mailLink} onClick={onClose}>
+            <span>Email</span>
+          </a>
+          <a className="invite-option" href={smsLink} onClick={onClose}>
+            <span>Message (SMS)</span>
+          </a>
+          <button className="invite-option" onClick={copyLink}>
+            <span>Copy link</span>
+          </button>
+        </div>
+        <div className="link-box">{url}</div>
+        <div className="modal-actions">
+          <button className="btn btn-outline" onClick={onClose}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ArchiveModal({ archivedExpenses, symbol, onRestore, onClose }) {
   const sorted = [...archivedExpenses].sort((a, b) => (b.archivedAt || 0) - (a.archivedAt || 0));
 
@@ -688,6 +746,7 @@ function App() {
   const [showHeaderCurrencyPicker, setShowHeaderCurrencyPicker] = useState(false);
   const [showManageCurrencies, setShowManageCurrencies] = useState(false);
   const [showArchive, setShowArchive] = useState(false);
+  const [showInviteFallback, setShowInviteFallback] = useState(false);
   const [tripHistory, setTripHistory] = useState(() => loadTripHistory());
   const [loading, setLoading] = useState(false);
   const [trip, setTrip] = useState(null);
@@ -718,6 +777,23 @@ function App() {
     };
     check();
   }, []);
+
+  // Invite links look like https://.../?code=K7QXP — auto-join straight in,
+  // no manual typing needed. Runs once Firebase is ready, then cleans the
+  // URL so the code doesn't linger in browser history if the link gets
+  // reshared or bookmarked later.
+  useEffect(() => {
+    if (!fbReady) return;
+    const params = new URLSearchParams(window.location.search);
+    const codeFromUrl = params.get('code');
+    if (codeFromUrl) {
+      const clean = codeFromUrl.trim().toUpperCase();
+      if (clean) jumpToTrip(clean);
+      const url = new URL(window.location.href);
+      url.searchParams.delete('code');
+      window.history.replaceState(null, '', url.toString());
+    }
+  }, [fbReady]);
 
   const showToast = (msg) => {
     setToast(msg);
@@ -835,7 +911,7 @@ function App() {
     if (!snap.exists()) {
       setLoading(false);
       removeFromHistory(code);
-      showToast("That trip's gone — removed it from your list");
+      showToast('No trip found with that code');
       return;
     }
     const data = snap.data();
@@ -1042,6 +1118,21 @@ function App() {
   const currency = trip.currency || 'USD';
   const symbol = symbolFor(currency);
 
+  const inviteUrl = `${window.location.origin}${window.location.pathname}?code=${tripCode}`;
+  const inviteText = trip.name ? `Join "${trip.name}" on Pocket Split` : 'Join my trip on Pocket Split';
+
+  const shareInvite = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'Pocket Split', text: inviteText, url: inviteUrl });
+      } catch (e) {
+        // Person cancelled the native share sheet — nothing to do.
+      }
+    } else {
+      setShowInviteFallback(true);
+    }
+  };
+
   const balances = {};
   people.forEach(p => balances[p] = 0);
   expenses.forEach(exp => {
@@ -1074,6 +1165,9 @@ function App() {
         <h1 className="brand-title display">Pocket Split</h1>
         {trip.name && <p className="trip-name-tag">{trip.name}</p>}
         <div className="header-controls">
+          <button className="pill invite-pill" onClick={shareInvite} style={{cursor: 'pointer'}}>
+            Invite
+          </button>
           <div className="pill">
             <span className={'live-dot' + (isOnline ? '' : ' offline')}></span>
             {isOnline ? 'CODE' : 'OFFLINE'}&nbsp;<strong>{tripCode}</strong>
@@ -1086,6 +1180,15 @@ function App() {
           <button className="pill" onClick={leaveTrip} style={{cursor: 'pointer'}}>Switch trip</button>
         </div>
       </div>
+
+      {showInviteFallback && (
+        <InviteFallbackModal
+          url={inviteUrl}
+          text={inviteText}
+          showToast={showToast}
+          onClose={() => setShowInviteFallback(false)}
+        />
+      )}
 
       {showHeaderCurrencyPicker && (
         <CurrencyPickerModal
