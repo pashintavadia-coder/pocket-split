@@ -1373,6 +1373,13 @@ function App() {
     // sidesteps that entirely and reads clearly everywhere.
     const money = (n) => `${currency} ${Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
+    // A PDF is a fixed document that everyone in the group opens later, on
+    // whatever device — unlike the live in-app dates (which correctly adapt
+    // per viewer), this one date format has to be locked in at export time.
+    // Forcing 'en-GB' with a spelled-out month sidesteps DD/MM vs MM/DD
+    // ambiguity entirely, regardless of the exporting device's own locale.
+    const pdfDate = (ts) => new Date(ts).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+
     const BLUE = [26, 115, 232];
     const GREEN = [24, 128, 56];
     const INK = [32, 33, 36];
@@ -1385,7 +1392,7 @@ function App() {
     doc.setFontSize(19);
     doc.text(trip.name || 'Pocket Split', 14, 17);
     doc.setFontSize(9.5);
-    doc.text(`Code ${tripCode}  ·  Generated ${new Date().toLocaleDateString()}`, 14, 24);
+    doc.text(`Code ${tripCode}  ·  Generated ${pdfDate(Date.now())}`, 14, 24);
 
     let y = 42;
     doc.setTextColor(...INK_DIM);
@@ -1448,7 +1455,7 @@ function App() {
       head: [['Date', 'Description', 'Amount', 'Paid By']],
       body: sortedExpenses.length > 0
         ? sortedExpenses.map((e) => [
-            e.ts ? new Date(e.ts).toLocaleDateString() : '',
+            e.ts ? pdfDate(e.ts) : '',
             e.description || 'Expense',
             money(e.amount),
             e.paidBy,
