@@ -204,11 +204,6 @@
   .modal-sheet h3 { margin: 0 0 18px; font-size: 19px; font-weight: 800; color: var(--ink); }
   .field { margin-bottom: 18px; }
   .amount-currency-row { display: flex; gap: 8px; align-items: stretch; }
-  .currency-picker {
-    font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 600;
-    border: 1.5px solid var(--border); border-radius: 12px; background: var(--surface);
-    color: var(--ink); padding: 0 10px; cursor: pointer; flex-shrink: 0;
-  }
   .convert-hint { font-size: 12px; color: var(--blue-700); margin-top: 8px; }
   .convert-error { font-size: 12px; color: var(--owe); margin-top: 8px; font-weight: 600; }
   .payer-row { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -219,6 +214,38 @@
   .split-row input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--blue-600); }
   .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
   .modal-actions .btn { width: auto; flex: 1; }
+
+  .currency-picker-backdrop { z-index: 60; }
+  .currency-picker-sheet { display: flex; flex-direction: column; max-height: 80vh; }
+  .currency-scroll { overflow-y: auto; flex: 1; margin: 0 -4px; padding: 0 4px; }
+  .currency-group-label {
+    font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 700;
+    color: var(--ink-faint); margin: 4px 0 6px;
+  }
+  .currency-divider { height: 1px; background: var(--border); margin: 10px 0 12px; }
+  .currency-row {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    background: none; border: none; text-align: left; cursor: pointer;
+    padding: 10px 6px; border-radius: 10px; font-size: 14px; color: var(--ink);
+  }
+  .currency-row:active { background: var(--surface-sunken); }
+  .currency-row-symbol { width: 34px; flex-shrink: 0; color: var(--ink-dim); font-size: 13px; }
+  .currency-row-code { width: 46px; flex-shrink: 0; font-weight: 700; }
+  .currency-row-name { color: var(--ink-dim); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  .manage-currencies-hint { font-size: 13px; color: var(--ink-dim); line-height: 1.5; margin: 0 0 16px; }
+  .pinned-chip-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
+  .add-currency-btn {
+    background: var(--blue-tint); border: 1.5px dashed var(--blue-tint-border); color: var(--blue-700);
+    border-radius: 20px; padding: 7px 14px; font-size: 13px; font-weight: 700; cursor: pointer;
+  }
+
+  .currency-select-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: var(--surface); border: 1.5px solid var(--border); border-radius: 12px;
+    padding: 0 12px; height: 48px; font-family: 'JetBrains Mono', monospace; font-weight: 700;
+    font-size: 14px; color: var(--ink); cursor: pointer; flex-shrink: 0;
+  }
 
   .toast {
     position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
@@ -288,11 +315,132 @@ const { useState, useEffect, useCallback, useRef } = React;
 function uid() { return Math.random().toString(36).slice(2, 9); }
 
 const CURRENCIES = [
-  { code: 'USD', symbol: '$' }, { code: 'EUR', symbol: '€' }, { code: 'GBP', symbol: '£' },
-  { code: 'INR', symbol: '₹' }, { code: 'JPY', symbol: '¥' }, { code: 'AUD', symbol: 'A$' },
-  { code: 'CAD', symbol: 'C$' }, { code: 'SGD', symbol: 'S$' }, { code: 'AED', symbol: 'د.إ' },
-  { code: 'THB', symbol: '฿' }, { code: 'MXN', symbol: 'Mex$' }, { code: 'CHF', symbol: 'CHF' },
+  { code: 'USD', symbol: '$', name: 'US Dollar' },
+  { code: 'EUR', symbol: '€', name: 'Euro' },
+  { code: 'GBP', symbol: '£', name: 'British Pound' },
+  { code: 'INR', symbol: '₹', name: 'Indian Rupee' },
+  { code: 'JPY', symbol: '¥', name: 'Japanese Yen' },
+  { code: 'CNY', symbol: '¥', name: 'Chinese Yuan' },
+  { code: 'AUD', symbol: 'A$', name: 'Australian Dollar' },
+  { code: 'CAD', symbol: 'C$', name: 'Canadian Dollar' },
+  { code: 'CHF', symbol: 'CHF', name: 'Swiss Franc' },
+  { code: 'HKD', symbol: 'HK$', name: 'Hong Kong Dollar' },
+  { code: 'SGD', symbol: 'S$', name: 'Singapore Dollar' },
+  { code: 'NZD', symbol: 'NZ$', name: 'New Zealand Dollar' },
+  { code: 'KRW', symbol: '₩', name: 'South Korean Won' },
+  { code: 'SEK', symbol: 'kr', name: 'Swedish Krona' },
+  { code: 'NOK', symbol: 'kr', name: 'Norwegian Krone' },
+  { code: 'DKK', symbol: 'kr', name: 'Danish Krone' },
+  { code: 'ISK', symbol: 'kr', name: 'Icelandic Krona' },
+  { code: 'PLN', symbol: 'zł', name: 'Polish Zloty' },
+  { code: 'CZK', symbol: 'Kč', name: 'Czech Koruna' },
+  { code: 'HUF', symbol: 'Ft', name: 'Hungarian Forint' },
+  { code: 'RON', symbol: 'lei', name: 'Romanian Leu' },
+  { code: 'BGN', symbol: 'лв', name: 'Bulgarian Lev' },
+  { code: 'HRK', symbol: 'kn', name: 'Croatian Kuna' },
+  { code: 'RUB', symbol: '₽', name: 'Russian Ruble' },
+  { code: 'UAH', symbol: '₴', name: 'Ukrainian Hryvnia' },
+  { code: 'TRY', symbol: '₺', name: 'Turkish Lira' },
+  { code: 'ILS', symbol: '₪', name: 'Israeli Shekel' },
+  { code: 'AED', symbol: 'د.إ', name: 'UAE Dirham' },
+  { code: 'SAR', symbol: '﷼', name: 'Saudi Riyal' },
+  { code: 'QAR', symbol: 'ر.ق', name: 'Qatari Riyal' },
+  { code: 'KWD', symbol: 'د.ك', name: 'Kuwaiti Dinar' },
+  { code: 'BHD', symbol: '.د.ب', name: 'Bahraini Dinar' },
+  { code: 'OMR', symbol: 'ر.ع.', name: 'Omani Rial' },
+  { code: 'JOD', symbol: 'د.ا', name: 'Jordanian Dinar' },
+  { code: 'LBP', symbol: 'ل.ل', name: 'Lebanese Pound' },
+  { code: 'EGP', symbol: 'E£', name: 'Egyptian Pound' },
+  { code: 'ZAR', symbol: 'R', name: 'South African Rand' },
+  { code: 'NGN', symbol: '₦', name: 'Nigerian Naira' },
+  { code: 'KES', symbol: 'KSh', name: 'Kenyan Shilling' },
+  { code: 'GHS', symbol: 'GH₵', name: 'Ghanaian Cedi' },
+  { code: 'MAD', symbol: 'د.م.', name: 'Moroccan Dirham' },
+  { code: 'TND', symbol: 'د.ت', name: 'Tunisian Dinar' },
+  { code: 'ETB', symbol: 'Br', name: 'Ethiopian Birr' },
+  { code: 'THB', symbol: '฿', name: 'Thai Baht' },
+  { code: 'VND', symbol: '₫', name: 'Vietnamese Dong' },
+  { code: 'IDR', symbol: 'Rp', name: 'Indonesian Rupiah' },
+  { code: 'MYR', symbol: 'RM', name: 'Malaysian Ringgit' },
+  { code: 'PHP', symbol: '₱', name: 'Philippine Peso' },
+  { code: 'MMK', symbol: 'K', name: 'Myanmar Kyat' },
+  { code: 'KHR', symbol: '៛', name: 'Cambodian Riel' },
+  { code: 'LAK', symbol: '₭', name: 'Lao Kip' },
+  { code: 'BDT', symbol: '৳', name: 'Bangladeshi Taka' },
+  { code: 'PKR', symbol: '₨', name: 'Pakistani Rupee' },
+  { code: 'LKR', symbol: 'Rs', name: 'Sri Lankan Rupee' },
+  { code: 'NPR', symbol: '₨', name: 'Nepalese Rupee' },
+  { code: 'MVR', symbol: 'Rf', name: 'Maldivian Rufiyaa' },
+  { code: 'BTN', symbol: 'Nu.', name: 'Bhutanese Ngultrum' },
+  { code: 'AFN', symbol: '؋', name: 'Afghan Afghani' },
+  { code: 'IRR', symbol: '﷼', name: 'Iranian Rial' },
+  { code: 'IQD', symbol: 'ع.د', name: 'Iraqi Dinar' },
+  { code: 'KZT', symbol: '₸', name: 'Kazakhstani Tenge' },
+  { code: 'UZS', symbol: 'so\'m', name: 'Uzbekistani Som' },
+  { code: 'AZN', symbol: '₼', name: 'Azerbaijani Manat' },
+  { code: 'GEL', symbol: '₾', name: 'Georgian Lari' },
+  { code: 'AMD', symbol: '֏', name: 'Armenian Dram' },
+  { code: 'MNT', symbol: '₮', name: 'Mongolian Tugrik' },
+  { code: 'TWD', symbol: 'NT$', name: 'Taiwan Dollar' },
+  { code: 'MXN', symbol: 'Mex$', name: 'Mexican Peso' },
+  { code: 'BRL', symbol: 'R$', name: 'Brazilian Real' },
+  { code: 'ARS', symbol: '$', name: 'Argentine Peso' },
+  { code: 'CLP', symbol: '$', name: 'Chilean Peso' },
+  { code: 'COP', symbol: '$', name: 'Colombian Peso' },
+  { code: 'PEN', symbol: 'S/', name: 'Peruvian Sol' },
+  { code: 'UYU', symbol: '$U', name: 'Uruguayan Peso' },
+  { code: 'BOB', symbol: 'Bs.', name: 'Bolivian Boliviano' },
+  { code: 'PYG', symbol: '₲', name: 'Paraguayan Guarani' },
+  { code: 'VES', symbol: 'Bs.', name: 'Venezuelan Bolivar' },
+  { code: 'GTQ', symbol: 'Q', name: 'Guatemalan Quetzal' },
+  { code: 'CRC', symbol: '₡', name: 'Costa Rican Colon' },
+  { code: 'PAB', symbol: 'B/.', name: 'Panamanian Balboa' },
+  { code: 'DOP', symbol: 'RD$', name: 'Dominican Peso' },
+  { code: 'JMD', symbol: 'J$', name: 'Jamaican Dollar' },
+  { code: 'TTD', symbol: 'TT$', name: 'Trinidad & Tobago Dollar' },
+  { code: 'BSD', symbol: 'B$', name: 'Bahamian Dollar' },
+  { code: 'BBD', symbol: 'Bds$', name: 'Barbadian Dollar' },
+  { code: 'XCD', symbol: 'EC$', name: 'East Caribbean Dollar' },
+  { code: 'HTG', symbol: 'G', name: 'Haitian Gourde' },
+  { code: 'CUP', symbol: '$', name: 'Cuban Peso' },
+  { code: 'HNL', symbol: 'L', name: 'Honduran Lempira' },
+  { code: 'NIO', symbol: 'C$', name: 'Nicaraguan Cordoba' },
+  { code: 'SVC', symbol: '$', name: 'Salvadoran Colon' },
+  { code: 'FJD', symbol: 'FJ$', name: 'Fijian Dollar' },
+  { code: 'PGK', symbol: 'K', name: 'Papua New Guinean Kina' },
+  { code: 'WST', symbol: 'WS$', name: 'Samoan Tala' },
+  { code: 'TOP', symbol: 'T$', name: 'Tongan Pa\'anga' },
+  { code: 'XPF', symbol: '₣', name: 'CFP Franc' },
+  { code: 'XOF', symbol: 'CFA', name: 'West African CFA Franc' },
+  { code: 'XAF', symbol: 'FCFA', name: 'Central African CFA Franc' },
+  { code: 'MUR', symbol: '₨', name: 'Mauritian Rupee' },
+  { code: 'SCR', symbol: '₨', name: 'Seychellois Rupee' },
+  { code: 'MZN', symbol: 'MT', name: 'Mozambican Metical' },
+  { code: 'ZMW', symbol: 'ZK', name: 'Zambian Kwacha' },
+  { code: 'BWP', symbol: 'P', name: 'Botswana Pula' },
+  { code: 'NAD', symbol: 'N$', name: 'Namibian Dollar' },
+  { code: 'TZS', symbol: 'TSh', name: 'Tanzanian Shilling' },
+  { code: 'UGX', symbol: 'USh', name: 'Ugandan Shilling' },
+  { code: 'RWF', symbol: 'FRw', name: 'Rwandan Franc' },
+  { code: 'DZD', symbol: 'د.ج', name: 'Algerian Dinar' },
+  { code: 'LYD', symbol: 'ل.د', name: 'Libyan Dinar' },
+  { code: 'SDG', symbol: 'ج.س.', name: 'Sudanese Pound' },
+  { code: 'ALL', symbol: 'L', name: 'Albanian Lek' },
+  { code: 'MKD', symbol: 'ден', name: 'Macedonian Denar' },
+  { code: 'RSD', symbol: 'дин.', name: 'Serbian Dinar' },
+  { code: 'BAM', symbol: 'KM', name: 'Bosnia-Herzegovina Mark' },
+  { code: 'MDL', symbol: 'L', name: 'Moldovan Leu' },
+  { code: 'BYN', symbol: 'Br', name: 'Belarusian Ruble' },
+  { code: 'YER', symbol: '﷼', name: 'Yemeni Rial' },
+  { code: 'SYP', symbol: '£', name: 'Syrian Pound' },
+  { code: 'BND', symbol: 'B$', name: 'Brunei Dollar' },
+  { code: 'MOP', symbol: 'MOP$', name: 'Macanese Pataca' },
+  { code: 'KGS', symbol: 'с', name: 'Kyrgyzstani Som' },
+  { code: 'TJS', symbol: 'ЅМ', name: 'Tajikistani Somoni' },
+  { code: 'TMT', symbol: 'm', name: 'Turkmenistani Manat' },
 ];
+
+const CURRENCY_MAP = Object.fromEntries(CURRENCIES.map(c => [c.code, c]));
 
 const PERSON_COLORS = ['--p1', '--p2', '--p3', '--p4', '--p5', '--p6', '--p7', '--p8'];
 function colorForPerson(name, people) {
@@ -300,7 +448,8 @@ function colorForPerson(name, people) {
   return `var(${PERSON_COLORS[idx % PERSON_COLORS.length]})`;
 }
 function initials(name) { return name.trim().slice(0, 2).toUpperCase(); }
-function symbolFor(code) { const c = CURRENCIES.find(c => c.code === code); return c ? c.symbol : '$'; }
+function symbolFor(code) { return CURRENCY_MAP[code] ? CURRENCY_MAP[code].symbol : '$'; }
+function nameFor(code) { return CURRENCY_MAP[code] ? CURRENCY_MAP[code].name : code; }
 function fmt(n, symbol) {
   const sign = n < 0 ? '-' : '';
   return sign + (symbol || '$') + Math.abs(n).toFixed(2);
@@ -327,6 +476,105 @@ function simplifySettlements(balances) {
   return txns;
 }
 
+function CurrencyPickerModal({ pinned = [], excludeCodes = [], onSelect, onClose, title }) {
+  const [query, setQuery] = useState('');
+  const q = query.trim().toLowerCase();
+
+  const matches = (c) => !q || c.code.toLowerCase().includes(q) || c.name.toLowerCase().includes(q);
+  const available = CURRENCIES.filter((c) => !excludeCodes.includes(c.code));
+  const filtered = available.filter(matches);
+
+  const pinnedSet = new Set(pinned);
+  const pinnedList = filtered.filter((c) => pinnedSet.has(c.code));
+  const restList = filtered
+    .filter((c) => !pinnedSet.has(c.code))
+    .sort((a, b) => a.code.localeCompare(b.code));
+
+  const Row = (c) => (
+    <button key={c.code} className="currency-row" onClick={() => onSelect(c.code)}>
+      <span className="currency-row-symbol mono">{c.symbol}</span>
+      <span className="currency-row-code mono">{c.code}</span>
+      <span className="currency-row-name">{c.name}</span>
+    </button>
+  );
+
+  return (
+    <div className="modal-backdrop currency-picker-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal-sheet currency-picker-sheet">
+        <h3 className="display">{title || 'Choose a currency'}</h3>
+        <input
+          type="text"
+          placeholder="Search by name or code…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          autoFocus
+          style={{ marginBottom: 14 }}
+        />
+        <div className="currency-scroll">
+          {pinnedList.length > 0 && (
+            <>
+              <div className="currency-group-label">Pinned for this trip</div>
+              {pinnedList.map(Row)}
+              <div className="currency-divider"></div>
+            </>
+          )}
+          {restList.length > 0 ? (
+            restList.map(Row)
+          ) : pinnedList.length === 0 ? (
+            <div className="empty-state">No currencies match "{query}"</div>
+          ) : null}
+        </div>
+        <div className="modal-actions">
+          <button className="btn btn-outline" onClick={onClose}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ManageCurrenciesModal({ pinned, onSave, onClose }) {
+  const [list, setList] = useState([...pinned]);
+  const [showPicker, setShowPicker] = useState(false);
+
+  const remove = (code) => setList((prev) => prev.filter((c) => c !== code));
+  const add = (code) => {
+    if (!list.includes(code)) setList((prev) => [...prev, code]);
+    setShowPicker(false);
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal-sheet">
+        <h3 className="display">Trip currencies</h3>
+        <p className="manage-currencies-hint">
+          Pin the currencies your group uses most on this trip — they'll show first whenever anyone picks a currency here.
+        </p>
+        <div className="pinned-chip-row">
+          {list.map((code) => (
+            <div className="chip" key={code}>
+              <span className="mono">{code}</span>
+              <button onClick={() => remove(code)}>×</button>
+            </div>
+          ))}
+          <button className="add-currency-btn" onClick={() => setShowPicker(true)}>+ Add</button>
+        </div>
+        <div className="modal-actions">
+          <button className="btn btn-outline" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={() => onSave(list)}>Save</button>
+        </div>
+      </div>
+      {showPicker && (
+        <CurrencyPickerModal
+          excludeCodes={list}
+          title="Add a currency"
+          onSelect={add}
+          onClose={() => setShowPicker(false)}
+        />
+      )}
+    </div>
+  );
+}
+
 function FanStack() {
   return (
     <div className="fan-stack">
@@ -338,7 +586,7 @@ function FanStack() {
   );
 }
 
-const EMPTY_TRIP = { people: [], expenses: [], currency: 'USD', name: null };
+const EMPTY_TRIP = { people: [], expenses: [], currency: 'USD', name: null, pinnedCurrencies: [] };
 const STORAGE_KEY = 'pocketSplitTripCode';
 const HISTORY_KEY = 'pocketSplitTripHistory';
 const HISTORY_LIMIT = 20;
@@ -377,6 +625,10 @@ function App() {
   });
   const [codeInput, setCodeInput] = useState('');
   const [newTripName, setNewTripName] = useState('');
+  const [newTripCurrencies, setNewTripCurrencies] = useState([]);
+  const [showNewTripCurrencyPicker, setShowNewTripCurrencyPicker] = useState(false);
+  const [showHeaderCurrencyPicker, setShowHeaderCurrencyPicker] = useState(false);
+  const [showManageCurrencies, setShowManageCurrencies] = useState(false);
   const [tripHistory, setTripHistory] = useState(() => loadTripHistory());
   const [loading, setLoading] = useState(false);
   const [trip, setTrip] = useState(null);
@@ -488,10 +740,13 @@ function App() {
     ).join('');
     const { db, doc, setDoc } = window.__firebase;
     const name = newTripName.trim() || null;
-    await setDoc(doc(db, 'trips', code), { ...EMPTY_TRIP, name });
+    const pinnedCurrencies = [...newTripCurrencies];
+    const startingCurrency = pinnedCurrencies[0] || 'USD';
+    await setDoc(doc(db, 'trips', code), { ...EMPTY_TRIP, name, currency: startingCurrency, pinnedCurrencies });
     rememberTrip(code);
-    upsertHistory({ code, name, currency: 'USD', lastVisited: Date.now() });
+    upsertHistory({ code, name, currency: startingCurrency, lastVisited: Date.now() });
     setNewTripName('');
+    setNewTripCurrencies([]);
     setTripCode(code);
   };
 
@@ -611,6 +866,7 @@ function App() {
 
   if (!tripCode) {
     return (
+      <>
       <div className="gate">
         <FanStack />
         <p className="eyebrow mono">POCKET SPLIT</p>
@@ -623,6 +879,23 @@ function App() {
             onChange={(e) => setNewTripName(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && createTrip()}
           />
+        </div>
+        <div className="field">
+          <span className="field-label">Currencies you'll use (optional)</span>
+          <div className="pinned-chip-row">
+            {newTripCurrencies.map((code) => (
+              <div className="chip" key={code}>
+                <span className="mono">{code}</span>
+                <button onClick={() => setNewTripCurrencies((prev) => prev.filter((c) => c !== code))}>×</button>
+              </div>
+            ))}
+            <button className="add-currency-btn" onClick={() => setShowNewTripCurrencyPicker(true)}>+ Add</button>
+          </div>
+          {newTripCurrencies.length > 0 && (
+            <div style={{ fontSize: 11.5, color: 'var(--ink-faint)', marginTop: 8 }}>
+              First one picked ({newTripCurrencies[0]}) becomes the trip's main currency — you can change this anytime.
+            </div>
+          )}
         </div>
         <button className="btn btn-primary" onClick={createTrip} disabled={loading}>
           Start a new trip
@@ -664,6 +937,19 @@ function App() {
           </>
         )}
       </div>
+
+      {showNewTripCurrencyPicker && (
+        <CurrencyPickerModal
+          excludeCodes={newTripCurrencies}
+          title="Add a currency"
+          onSelect={(code) => {
+            setNewTripCurrencies((prev) => (prev.includes(code) ? prev : [...prev, code]));
+            setShowNewTripCurrencyPicker(false);
+          }}
+          onClose={() => setShowNewTripCurrencyPicker(false)}
+        />
+      )}
+      </>
     );
   }
 
@@ -712,14 +998,34 @@ function App() {
             {isOnline ? 'CODE' : 'OFFLINE'}&nbsp;<strong>{tripCode}</strong>
             <button onClick={() => { navigator.clipboard && navigator.clipboard.writeText(tripCode); showToast('Code copied'); }}>copy</button>
           </div>
-          <select className="pill mono" value={currency} onChange={(e) => updateCurrency(e.target.value)}>
-            {CURRENCIES.map(c => (
-              <option key={c.code} value={c.code}>{c.symbol} {c.code}</option>
-            ))}
-          </select>
+          <button className="pill mono" onClick={() => setShowHeaderCurrencyPicker(true)} style={{cursor: 'pointer'}}>
+            {symbol} {currency}
+          </button>
+          <button className="pill" onClick={() => setShowManageCurrencies(true)} style={{cursor: 'pointer'}}>Manage currencies</button>
           <button className="pill" onClick={leaveTrip} style={{cursor: 'pointer'}}>Switch trip</button>
         </div>
       </div>
+
+      {showHeaderCurrencyPicker && (
+        <CurrencyPickerModal
+          pinned={trip.pinnedCurrencies || []}
+          title="Trip currency"
+          onSelect={(code) => { updateCurrency(code); setShowHeaderCurrencyPicker(false); }}
+          onClose={() => setShowHeaderCurrencyPicker(false)}
+        />
+      )}
+
+      {showManageCurrencies && (
+        <ManageCurrenciesModal
+          pinned={trip.pinnedCurrencies || []}
+          onSave={(list) => {
+            mutate((prev) => ({ ...prev, pinnedCurrencies: list }));
+            setShowManageCurrencies(false);
+            showToast('Trip currencies updated');
+          }}
+          onClose={() => setShowManageCurrencies(false)}
+        />
+      )}
 
       <div className="body-pad">
         {people.length === 0 ? (
@@ -855,6 +1161,7 @@ function App() {
           people={people}
           symbol={symbol}
           tripCurrency={currency}
+          pinnedCurrencies={trip.pinnedCurrencies || []}
           initial={editingExpense}
           onClose={() => { setShowAddExpense(false); setEditingExpense(null); }}
           onSave={(exp) => { saveExpense(exp); setShowAddExpense(false); setEditingExpense(null); }}
@@ -866,7 +1173,7 @@ function App() {
   );
 }
 
-function AddExpenseModal({ people, symbol, tripCurrency, initial, onClose, onSave }) {
+function AddExpenseModal({ people, symbol, tripCurrency, pinnedCurrencies = [], initial, onClose, onSave }) {
   const isEdit = !!initial;
   const [description, setDescription] = useState(initial ? initial.description : '');
   // If editing a foreign-currency expense, show the original typed amount/currency,
@@ -881,6 +1188,7 @@ function AddExpenseModal({ people, symbol, tripCurrency, initial, onClose, onSav
   const [splitAmong, setSplitAmong] = useState(initial ? [...initial.splitAmong] : [...people]);
   const [converting, setConverting] = useState(false);
   const [conversionError, setConversionError] = useState('');
+  const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
 
   const toggle = (p) => setSplitAmong(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]);
   const canSave = description.trim() && parseFloat(amount) > 0 && paidBy && splitAmong.length > 0 && !converting;
@@ -954,15 +1262,13 @@ function AddExpenseModal({ people, symbol, tripCurrency, initial, onClose, onSav
               <input type="number" inputMode="decimal" placeholder="0.00" value={amount}
                 onChange={(e) => setAmount(e.target.value)} style={{paddingLeft: 14 + (expenseSymbol.length * 9) + 6}} />
             </div>
-            <select
-              className="currency-picker"
-              value={expenseCurrency}
-              onChange={(e) => setExpenseCurrency(e.target.value)}
+            <button
+              type="button"
+              className="currency-select-btn"
+              onClick={() => setShowCurrencyPicker(true)}
             >
-              {CURRENCIES.map(c => (
-                <option key={c.code} value={c.code}>{c.code}</option>
-              ))}
-            </select>
+              {expenseCurrency}
+            </button>
           </div>
           {isForeign && !conversionError && (
             <div className="convert-hint">
@@ -973,6 +1279,15 @@ function AddExpenseModal({ people, symbol, tripCurrency, initial, onClose, onSav
             <div className="convert-error">{conversionError}</div>
           )}
         </div>
+
+        {showCurrencyPicker && (
+          <CurrencyPickerModal
+            pinned={pinnedCurrencies}
+            title="Expense currency"
+            onSelect={(code) => { setExpenseCurrency(code); setShowCurrencyPicker(false); }}
+            onClose={() => setShowCurrencyPicker(false)}
+          />
+        )}
 
         <div className="field">
           <span className="field-label">Who paid</span>
