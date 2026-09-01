@@ -442,6 +442,14 @@ const CURRENCIES = [
 
 const CURRENCY_MAP = Object.fromEntries(CURRENCIES.map(c => [c.code, c]));
 
+function lastCurrencyKey(tripCode) { return `pocketSplitLastCurrency:${tripCode}`; }
+function getLastUsedCurrency(tripCode) {
+  try { return localStorage.getItem(lastCurrencyKey(tripCode)); } catch (e) { return null; }
+}
+function setLastUsedCurrency(tripCode, code) {
+  try { localStorage.setItem(lastCurrencyKey(tripCode), code); } catch (e) {}
+}
+
 const PERSON_COLORS = ['--p1', '--p2', '--p3', '--p4', '--p5', '--p6', '--p7', '--p8'];
 function colorForPerson(name, people) {
   const idx = people.indexOf(name);
@@ -1162,6 +1170,7 @@ function App() {
           symbol={symbol}
           tripCurrency={currency}
           pinnedCurrencies={trip.pinnedCurrencies || []}
+          tripCode={tripCode}
           initial={editingExpense}
           onClose={() => { setShowAddExpense(false); setEditingExpense(null); }}
           onSave={(exp) => { saveExpense(exp); setShowAddExpense(false); setEditingExpense(null); }}
@@ -1173,7 +1182,7 @@ function App() {
   );
 }
 
-function AddExpenseModal({ people, symbol, tripCurrency, pinnedCurrencies = [], initial, onClose, onSave }) {
+function AddExpenseModal({ people, symbol, tripCurrency, pinnedCurrencies = [], tripCode, initial, onClose, onSave }) {
   const isEdit = !!initial;
   const [description, setDescription] = useState(initial ? initial.description : '');
   // If editing a foreign-currency expense, show the original typed amount/currency,
@@ -1181,9 +1190,16 @@ function AddExpenseModal({ people, symbol, tripCurrency, pinnedCurrencies = [], 
   const [amount, setAmount] = useState(
     initial ? String(initial.originalAmount != null ? initial.originalAmount : initial.amount) : ''
   );
-  const [expenseCurrency, setExpenseCurrency] = useState(
-    initial && initial.originalCurrency ? initial.originalCurrency : tripCurrency
-  );
+  const [expenseCurrency, setExpenseCurrency] = useState(() => {
+    if (initial && initial.originalCurrency) return initial.originalCurrency;
+    if (!isEdit) {
+      // New expense: default to whatever currency was last used on this trip,
+      // rather than always resetting to the trip's main currency.
+      const remembered = getLastUsedCurrency(tripCode);
+      if (remembered && CURRENCY_MAP[remembered]) return remembered;
+    }
+    return tripCurrency;
+  });
   const [paidBy, setPaidBy] = useState(initial ? initial.paidBy : people[0]);
   const [splitAmong, setSplitAmong] = useState(initial ? [...initial.splitAmong] : [...people]);
   const [converting, setConverting] = useState(false);
@@ -1199,6 +1215,7 @@ function AddExpenseModal({ people, symbol, tripCurrency, pinnedCurrencies = [], 
     if (!canSave) return;
     const typedAmount = parseFloat(amount);
     setConversionError('');
+    setLastUsedCurrency(tripCode, expenseCurrency);
 
     if (!isForeign) {
       onSave({
