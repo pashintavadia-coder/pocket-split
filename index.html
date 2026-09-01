@@ -385,6 +385,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 
 <script type="text/babel">
 const { useState, useEffect, useCallback, useRef } = React;
@@ -709,7 +710,7 @@ function ManageCurrenciesModal({ pinned, onSave, onClose }) {
   );
 }
 
-function TripSettingsModal({ tripName, currency, symbol, onOpenCurrencyPicker, onOpenManageCurrencies, onExportCSV, onExportPDF, onClose }) {
+function TripSettingsModal({ tripName, currency, symbol, onOpenCurrencyPicker, onOpenManageCurrencies, onExportExcel, onExportPDF, onClose }) {
   return (
     <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal-sheet">
@@ -726,8 +727,8 @@ function TripSettingsModal({ tripName, currency, symbol, onOpenCurrencyPicker, o
           <button className="invite-option" onClick={onOpenManageCurrencies}>
             <span>Manage pinned currencies</span>
           </button>
-          <button className="invite-option" onClick={onExportCSV}>
-            <span>Export as Excel (CSV)</span>
+          <button className="invite-option" onClick={onExportExcel}>
+            <span>Export as Excel (.xlsx)</span>
           </button>
           <button className="invite-option" onClick={onExportPDF}>
             <span>Export as PDF</span>
@@ -1295,25 +1296,65 @@ function App() {
     return `pocket-split-${base}.${ext}`;
   };
 
-  const exportCSV = () => {
-    const header = ['Date', 'Description', `Amount (${currency})`, 'Original Amount', 'Original Currency', 'Paid By', 'Split Among'];
+  const exportExcel = async () => {
+    if (!window.ExcelJS) { showToast("Excel export isn't ready yet — try again in a moment"); return; }
+    const workbook = new window.ExcelJS.Workbook();
+    workbook.creator = 'Pocket Split';
+    const sheet = workbook.addWorksheet(trip.name || tripCode);
+
+    sheet.columns = [
+      { header: 'Date', key: 'date', width: 13 },
+      { header: 'Description', key: 'desc', width: 28 },
+      { header: `Amount (${currency})`, key: 'amount', width: 16 },
+      { header: 'Original Amount', key: 'origAmt', width: 16 },
+      { header: 'Original Currency', key: 'origCur', width: 16 },
+      { header: 'Paid By', key: 'paidBy', width: 14 },
+      { header: 'Split Among', key: 'split', width: 30 },
+    ];
+
     const sorted = [...expenses].sort((a, b) => (a.ts || 0) - (b.ts || 0));
-    const rows = sorted.map((e) => [
-      e.ts ? new Date(e.ts).toISOString().slice(0, 10) : '',
-      e.description || 'Expense',
-      e.amount.toFixed(2),
-      e.originalAmount != null ? e.originalAmount.toFixed(2) : '',
-      e.originalCurrency || '',
-      e.paidBy,
-      e.splitAmong.join('; '),
-    ]);
-    const escapeCell = (v) => `"${String(v).replace(/"/g, '""')}"`;
-    const csv = [header, ...rows].map((r) => r.map(escapeCell).join(',')).join('\r\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    sorted.forEach((e) => {
+      sheet.addRow({
+        date: e.ts ? new Date(e.ts).toISOString().slice(0, 10) : '',
+        desc: e.description || 'Expense',
+        amount: e.amount,
+        origAmt: e.originalAmount != null ? e.originalAmount : '',
+        origCur: e.originalCurrency || '',
+        paidBy: e.paidBy,
+        split: e.splitAmong.join(', '),
+      });
+    });
+
+    // Thin black border on every cell, header row bolded with a blue fill/white
+    // text — CSV can't carry any of this since it's plain text; this is the
+    // actual point of switching to a real .xlsx file.
+    const thinBlack = { style: 'thin', color: { argb: 'FF000000' } };
+    const borderAll = { top: thinBlack, left: thinBlack, bottom: thinBlack, right: thinBlack };
+
+    sheet.getRow(1).eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1A73E8' } };
+      cell.border = borderAll;
+      cell.alignment = { vertical: 'middle' };
+    });
+
+    sheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return;
+      row.eachCell({ includeEmpty: true }, (cell) => {
+        cell.border = borderAll;
+      });
+      row.getCell('amount').numFmt = '#,##0.00';
+      row.getCell('origAmt').numFmt = '#,##0.00';
+    });
+
+    sheet.views = [{ state: 'frozen', ySplit: 1 }];
+
+    const bufferData = await workbook.xlsx.writeBuffer();
+    const blob = new Blob([bufferData], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = exportFileName('csv');
+    a.download = exportFileName('xlsx');
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -1372,9 +1413,9 @@ function App() {
         const status = b === 0 ? 'Settled up' : b > 0 ? `Is owed ${money(b)}` : `Owes ${money(b)}`;
         return [p, status];
       }),
-      theme: 'striped',
-      headStyles: { fillColor: BLUE },
-      styles: { fontSize: 10, textColor: INK },
+      theme: 'grid',
+      headStyles: { fillColor: BLUE, textColor: [255, 255, 255] },
+      styles: { fontSize: 10, textColor: INK, lineColor: [0, 0, 0], lineWidth: 0.1 },
       margin: { left: 14, right: 14 },
     });
     y = doc.lastAutoTable.finalY + 12;
@@ -1389,8 +1430,8 @@ function App() {
         head: [['From', 'To', 'Amount']],
         body: settlements.map((s) => [s.from, s.to, money(s.amt)]),
         theme: 'grid',
-        headStyles: { fillColor: GREEN },
-        styles: { fontSize: 10, textColor: INK },
+        headStyles: { fillColor: GREEN, textColor: [255, 255, 255] },
+        styles: { fontSize: 10, textColor: INK, lineColor: [0, 0, 0], lineWidth: 0.1 },
         columnStyles: { 2: { halign: 'right' } },
         margin: { left: 14, right: 14 },
       });
@@ -1413,9 +1454,9 @@ function App() {
             e.paidBy,
           ])
         : [['—', 'No expenses logged', '', '']],
-      theme: 'striped',
-      headStyles: { fillColor: BLUE },
-      styles: { fontSize: 9, textColor: INK },
+      theme: 'grid',
+      headStyles: { fillColor: BLUE, textColor: [255, 255, 255] },
+      styles: { fontSize: 9, textColor: INK, lineColor: [0, 0, 0], lineWidth: 0.1 },
       columnStyles: { 2: { halign: 'right' } },
       margin: { left: 14, right: 14 },
     });
@@ -1480,7 +1521,7 @@ function App() {
           symbol={symbol}
           onOpenCurrencyPicker={() => { setShowTripSettings(false); setShowHeaderCurrencyPicker(true); }}
           onOpenManageCurrencies={() => { setShowTripSettings(false); setShowManageCurrencies(true); }}
-          onExportCSV={() => { exportCSV(); setShowTripSettings(false); }}
+          onExportExcel={() => { exportExcel(); setShowTripSettings(false); }}
           onExportPDF={() => { exportPDF(); setShowTripSettings(false); }}
           onClose={() => setShowTripSettings(false)}
         />
