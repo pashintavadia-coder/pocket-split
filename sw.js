@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pocket-split-shell-v2';
+const CACHE_NAME = 'pocket-split-shell-v3';
 const SHELL_PATHS = [
   '/',
   '/index.html',
@@ -40,8 +40,13 @@ async function stripRedirectFlag(response) {
 
 // Network-first for the app shell: while this is actively being developed,
 // always prefer the latest deployed version when online. The cache is only
-// a fallback for offline use, not the default source of truth — this is
-// what makes new deploys show up immediately instead of days later.
+// a fallback for offline use, not the default source of truth.
+//
+// Important: `fetch(event.request)` alone can still be quietly satisfied
+// from the browser's ordinary HTTP cache, even though this looks like a
+// "network" request — that's what let people get stuck on old versions
+// despite this being called "network-first." Explicitly passing
+// `cache: 'no-store'` forces a genuine round-trip to the server every time.
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
@@ -49,7 +54,7 @@ self.addEventListener('fetch', (event) => {
   if (!isShellFile) return;
 
   event.respondWith(
-    fetch(event.request)
+    fetch(event.request.url, { cache: 'no-store' })
       .then(stripRedirectFlag)
       .then((response) => {
         const copy = response.clone();
