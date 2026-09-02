@@ -255,6 +255,13 @@
   .amount-currency-row { display: flex; gap: 8px; align-items: stretch; }
   .convert-hint { font-size: 12px; color: var(--google-blue-dark); margin-top: 8px; }
   .convert-error { font-size: 12px; color: var(--google-red); margin-top: 8px; font-weight: 600; }
+  .manual-rate-box {
+    margin-top: 12px; padding: 14px; background: var(--surface); border-radius: 16px;
+  }
+  .manual-rate-row { display: flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 600; color: var(--text-main); }
+  .manual-rate-input {
+    flex: 1; min-width: 0; padding: 10px 12px !important; font-size: 14px !important;
+  }
   .payer-row { display: flex; flex-wrap: wrap; gap: 8px; }
   .select-chip { display: inline-flex; align-items: center; gap: 6px; padding: 8px 13px 8px 8px; border-radius: 20px; border: none; background: var(--surface-inner); font-size: 13.5px; font-weight: 600; cursor: pointer; color: var(--text-main); box-shadow: var(--shadow-sm); }
   .select-chip.active { background: var(--google-blue-tint); color: var(--google-blue-dark); box-shadow: 0 0 0 2px var(--google-blue) inset; }
@@ -1002,7 +1009,7 @@ function App() {
     check();
   }, []);
 
-  // Invite links look like https://.../?code=K7QXP — auto-join straight in,
+  // Invite links look like https://.../?code=K7QXPMR — auto-join straight in,
   // no manual typing needed. Runs once Firebase is ready, then cleans the
   // URL so the code doesn't linger in browser history if the link gets
   // reshared or bookmarked later.
@@ -1151,7 +1158,7 @@ function App() {
   const createTrip = async () => {
     if (!window.__firebase) { showToast('Firebase is not configured yet'); return; }
     setLoading(true);
-    const code = Array.from({ length: 5 }, () =>
+    const code = Array.from({ length: 7 }, () =>
       'ABCDEFGHJKMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)]
     ).join('');
     const { db, doc, setDoc } = window.__firebase;
@@ -1259,7 +1266,15 @@ function App() {
     }
   };
 
+  const isPersonInActiveExpenses = (name) => {
+    return trip.expenses.some((exp) => exp.paidBy === name || exp.splitAmong.includes(name));
+  };
+
   const requestRemovePerson = (name) => {
+    if (isPersonInActiveExpenses(name)) {
+      showToast(`Cannot remove ${name} because they are part of active expenses.`);
+      return;
+    }
     if (confirmDeletePerson === name) {
       removePerson(name);
     } else {
@@ -1391,10 +1406,10 @@ function App() {
         <div className="or-divider">or join with a code</div>
         <div className="field">
           <input
-            type="text" placeholder="e.g. K7QXP" value={codeInput}
+            type="text" placeholder="e.g. K7QXPMR" value={codeInput}
             onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
             style={{ textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10 }}
-            maxLength={8}
+            maxLength={10}
             onKeyDown={(e) => e.key === 'Enter' && joinTrip()}
           />
         </div>
@@ -2001,6 +2016,8 @@ function AddExpenseModal({ people, symbol, tripCurrency, pinnedCurrencies = [], 
   const [converting, setConverting] = useState(false);
   const [conversionError, setConversionError] = useState('');
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
+  const [showManualRate, setShowManualRate] = useState(false);
+  const [manualRate, setManualRate] = useState('');
 
   const toggle = (p) => setSplitAmong(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]);
   const canSave = description.trim() && parseFloat(amount) > 0 && paidBy && splitAmong.length > 0 && !converting;
@@ -2050,10 +2067,30 @@ function AddExpenseModal({ people, symbol, tripCurrency, pinnedCurrencies = [], 
         conversionRate: rate,
       });
     } catch (e) {
-      setConversionError("Couldn't fetch today's exchange rate — check your connection and try again.");
+      setConversionError("Couldn't fetch today's exchange rate — enter it manually below, or try again once you're back online.");
+      setShowManualRate(true);
     } finally {
       setConverting(false);
     }
+  };
+
+  const saveWithManualRate = () => {
+    const rate = parseFloat(manualRate);
+    if (!rate || rate <= 0) return;
+    const typedAmount = parseFloat(amount);
+    const converted = Math.round(typedAmount * rate * 100) / 100;
+    setLastUsedCurrency(tripCode, expenseCurrency);
+    onSave({
+      id: isEdit ? initial.id : uid(),
+      description: description.trim(),
+      amount: converted,
+      paidBy,
+      splitAmong: [...splitAmong],
+      ts: isEdit ? initial.ts : Date.now(),
+      originalAmount: typedAmount,
+      originalCurrency: expenseCurrency,
+      conversionRate: rate,
+    });
   };
 
   return (
@@ -2091,13 +2128,41 @@ function AddExpenseModal({ people, symbol, tripCurrency, pinnedCurrencies = [], 
           {conversionError && (
             <div className="convert-error">{conversionError}</div>
           )}
+          {showManualRate && (
+            <div className="manual-rate-box">
+              <span className="field-label" style={{marginBottom: 6}}>Enter today's rate manually</span>
+              <div className="manual-rate-row">
+                <span>1 {expenseCurrency} =</span>
+                <input
+                  type="number" inputMode="decimal" placeholder="0.00" value={manualRate}
+                  onChange={(e) => setManualRate(e.target.value)}
+                  className="manual-rate-input"
+                />
+                <span>{tripCurrency}</span>
+              </div>
+              <button
+                className="btn btn-primary"
+                style={{marginTop: 10}}
+                onClick={saveWithManualRate}
+                disabled={!manualRate || parseFloat(manualRate) <= 0}
+              >
+                Save with this rate
+              </button>
+            </div>
+          )}
         </div>
 
         {showCurrencyPicker && (
           <CurrencyPickerModal
             pinned={pinnedCurrencies}
             title="Expense currency"
-            onSelect={(code) => { setExpenseCurrency(code); setShowCurrencyPicker(false); }}
+            onSelect={(code) => {
+              setExpenseCurrency(code);
+              setShowCurrencyPicker(false);
+              setShowManualRate(false);
+              setManualRate('');
+              setConversionError('');
+            }}
             onClose={() => setShowCurrencyPicker(false)}
           />
         )}
