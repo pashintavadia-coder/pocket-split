@@ -174,10 +174,10 @@
   .total-spend-sub { font-size: 11.5px; color: var(--text-faint); margin-top: 2px; }
 
   .glass-card h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-faint); margin: 0 0 12px; font-weight: 700; }
-  .balance-row { display: flex; justify-content: space-between; align-items: center; padding: 11px 0; border-top: 1px solid var(--border-soft); gap: 10px; }
+  .balance-row { display: flex; justify-content: space-between; align-items: center; padding: 0; gap: 10px; }
   .balance-row:first-of-type { border-top: none; }
   .person-tag { display: flex; align-items: center; gap: 9px; }
-  .avatar { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; color: #fff; flex-shrink: 0; }
+  .avatar { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; color: #fff; flex-shrink: 0; }
   .balance-name { font-size: 14.5px; font-weight: 600; color: var(--text-main); }
   .balance-amt { font-size: 16.5px; font-weight: 800; white-space: nowrap; }
   .amt-positive { color: var(--google-green); }
@@ -289,6 +289,35 @@
   .invite-pill { background: var(--google-blue); border-color: var(--google-blue); color: #FFFFFF; font-weight: 700; }
   .invite-option-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
   .settings-option-list { display: flex; flex-direction: column; gap: 8px; margin: 14px 0; }
+
+  .emoji-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin: 14px 0 18px; }
+  .emoji-option {
+    font-size: 26px; background: var(--surface-sunken); border: none; border-radius: 16px;
+    padding: 12px 0; cursor: pointer; line-height: 1;
+  }
+  .emoji-option:active { background: var(--google-blue-tint); }
+
+  /* Visual balance bars */
+  .bar-track { width: 100%; height: 6px; background-color: #E1E3E1; border-radius: 999px; overflow: hidden; margin-top: 6px; }
+  .bar-fill-positive { height: 100%; background-color: var(--google-green); border-radius: 999px; }
+  .bar-fill-negative { height: 100%; background-color: var(--google-red); border-radius: 999px; float: right; }
+  .balance-row-wrap { padding: 11px 0; border-top: 1px solid var(--border-soft); }
+  .balance-row-wrap:first-of-type { border-top: none; }
+
+  /* Settlement accordion */
+  .settle-details { margin-top: 20px; }
+  .settle-summary {
+    display: flex; align-items: center; gap: 10px; cursor: pointer;
+    background: var(--surface-inner); border-radius: 9999px; padding: 13px 18px;
+    font-family: 'Outfit', sans-serif; font-weight: 700; font-size: 14px; color: var(--text-main);
+    box-shadow: var(--shadow-sm); list-style: none;
+  }
+  details > summary::-webkit-details-marker { display: none; }
+  .settle-badge {
+    background: var(--google-blue-tint); color: var(--google-blue-dark);
+    border-radius: 9999px; padding: 2px 10px; font-size: 12px; font-weight: 800;
+  }
+  .settle-details .settle-list { margin-top: 12px; }
   .settings-option-value { color: var(--text-faint); font-size: 13px; font-weight: 600; }
 
   .tab-bar {
@@ -555,7 +584,20 @@ function colorForPerson(name, people) {
   const idx = people.indexOf(name);
   return `var(${PERSON_COLORS[idx % PERSON_COLORS.length]})`;
 }
+function softColorForPerson(name, people) {
+  return `color-mix(in srgb, ${colorForPerson(name, people)} 22%, white)`;
+}
 function initials(name) { return name.trim().slice(0, 2).toUpperCase(); }
+
+const EMOJI_LIST = ['🦊', '🦁', '👻', '🍕', '🚀', '🐸', '🐼', '🦄', '🌵', '🍩', '🎈', '🐙'];
+function randomEmoji(exclude = []) {
+  const unused = EMOJI_LIST.filter((e) => !exclude.includes(e));
+  const pool = unused.length > 0 ? unused : EMOJI_LIST;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+function avatarFor(name, personEmojis) {
+  return (personEmojis && personEmojis[name]) || initials(name);
+}
 function symbolFor(code) { return CURRENCY_MAP[code] ? CURRENCY_MAP[code].symbol : '$'; }
 function nameFor(code) { return CURRENCY_MAP[code] ? CURRENCY_MAP[code].name : code; }
 function fmt(n, symbol) {
@@ -808,6 +850,25 @@ function InviteFallbackModal({ url, text, showToast, onClose }) {
   );
 }
 
+function EmojiPickerModal({ personName, onSelect, onClose }) {
+  return (
+    <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal-sheet">
+        <h3 className="display">Choose an avatar</h3>
+        <p className="manage-currencies-hint" style={{marginTop: -8}}>For {personName}</p>
+        <div className="emoji-grid">
+          {EMOJI_LIST.map((e) => (
+            <button key={e} className="emoji-option" onClick={() => onSelect(e)}>{e}</button>
+          ))}
+        </div>
+        <div className="modal-actions">
+          <button className="btn btn-outline" onClick={onClose}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ArchiveModal({ archivedExpenses, symbol, onRestore, onClose }) {
   const sorted = [...archivedExpenses].sort((a, b) => (b.archivedAt || 0) - (a.archivedAt || 0));
 
@@ -853,7 +914,7 @@ function FanStack() {
   );
 }
 
-const EMPTY_TRIP = { people: [], expenses: [], archivedExpenses: [], currency: 'USD', name: null, pinnedCurrencies: [] };
+const EMPTY_TRIP = { people: [], expenses: [], archivedExpenses: [], currency: 'USD', name: null, pinnedCurrencies: [], personEmojis: {} };
 const STORAGE_KEY = 'pocketSplitTripCode';
 const HISTORY_KEY = 'pocketSplitTripHistory';
 const HISTORY_LIMIT = 20;
@@ -897,6 +958,7 @@ function App() {
   const [showHeaderCurrencyPicker, setShowHeaderCurrencyPicker] = useState(false);
   const [showManageCurrencies, setShowManageCurrencies] = useState(false);
   const [showArchive, setShowArchive] = useState(false);
+  const [showEmojiPickerFor, setShowEmojiPickerFor] = useState(null);
   const [showInviteFallback, setShowInviteFallback] = useState(false);
   const [activeTab, setActiveTab] = useState('summary');
   const [showTripSettings, setShowTripSettings] = useState(false);
@@ -1086,8 +1148,20 @@ function App() {
     if (trip.people.some(p => p.toLowerCase() === name.toLowerCase())) {
       showToast('Already on the list'); return;
     }
-    mutate(prev => ({ ...prev, people: [...prev.people, name] }));
+    mutate(prev => {
+      const usedEmojis = Object.values(prev.personEmojis || {});
+      const emoji = randomEmoji(usedEmojis);
+      return {
+        ...prev,
+        people: [...prev.people, name],
+        personEmojis: { ...(prev.personEmojis || {}), [name]: emoji },
+      };
+    });
     setNewPersonName('');
+  };
+
+  const setPersonEmoji = (name, emoji) => {
+    mutate(prev => ({ ...prev, personEmojis: { ...(prev.personEmojis || {}), [name]: emoji } }));
   };
 
   const removePerson = (name) => {
@@ -1309,6 +1383,7 @@ function App() {
 
   const settlements = simplifySettlements(balances);
   const sortedPeople = [...people].sort((a, b) => (balances[b] || 0) - (balances[a] || 0));
+  const maxAbsBalance = Math.max(1, ...people.map(p => Math.abs(balances[p] || 0)));
   const totalSpent = expenses.reduce((sum, e) => sum + e.amount, 0);
 
   const paidTotals = {};
@@ -1590,6 +1665,14 @@ function App() {
         />
       )}
 
+      {showEmojiPickerFor && (
+        <EmojiPickerModal
+          personName={showEmojiPickerFor}
+          onSelect={(emoji) => { setPersonEmoji(showEmojiPickerFor, emoji); setShowEmojiPickerFor(null); }}
+          onClose={() => setShowEmojiPickerFor(null)}
+        />
+      )}
+
       <div className="body-pad">
         <div className="tab-bar">
           <button className={'tab-btn' + (activeTab === 'summary' ? ' active' : '')} onClick={() => setActiveTab('summary')}>Summary</button>
@@ -1639,35 +1722,45 @@ function App() {
                 const b = balances[p] || 0;
                 const cls = b > 0.005 ? 'amt-positive' : b < -0.005 ? 'amt-negative' : 'amt-zero';
                 const label = b > 0.005 ? 'is owed' : b < -0.005 ? 'owes' : 'settled up';
+                const barPct = Math.max(0, Math.round((Math.abs(b) / maxAbsBalance) * 100));
                 return (
-                  <div className="balance-row" key={p}>
-                    <div className="person-tag">
-                      <div className="avatar" style={{background: colorForPerson(p, people)}}>{initials(p)}</div>
-                      <span className="balance-name">{p}</span>
+                  <div className="balance-row-wrap" key={p}>
+                    <div className="balance-row">
+                      <div className="person-tag">
+                        <div className="avatar" style={{background: softColorForPerson(p, people)}}>{avatarFor(p, trip.personEmojis)}</div>
+                        <span className="balance-name">{p}</span>
+                      </div>
+                      <span className={'balance-amt mono ' + cls}>
+                        {b === 0 ? 'settled up' : `${label} ${fmt(Math.abs(b), symbol)}`}
+                      </span>
                     </div>
-                    <span className={'balance-amt mono ' + cls}>
-                      {b === 0 ? 'settled up' : `${label} ${fmt(Math.abs(b), symbol)}`}
-                    </span>
+                    <div className="bar-track">
+                      {b > 0.005 && <div className="bar-fill-positive" style={{width: barPct + '%'}}></div>}
+                      {b < -0.005 && <div className="bar-fill-negative" style={{width: barPct + '%'}}></div>}
+                    </div>
                   </div>
                 );
               })}
 
               {settlements.length > 0 && (
-                <>
-                  <h3 style={{marginTop: 20}}>To settle up</h3>
+                <details className="settle-details">
+                  <summary className="settle-summary">
+                    View Settlement Plan
+                    <span className="settle-badge">{settlements.length}</span>
+                  </summary>
                   <div className="settle-list">
                     {settlements.map((s, i) => (
                       <div className="settle-item" key={i}>
-                        <div className="avatar" style={{width: 22, height: 22, fontSize: 10, background: colorForPerson(s.from, people)}}>{initials(s.from)}</div>
+                        <div className="avatar" style={{width: 22, height: 22, fontSize: 10, background: softColorForPerson(s.from, people)}}>{avatarFor(s.from, trip.personEmojis)}</div>
                         <strong>{s.from}</strong>
                         <span className="settle-arrow">→</span>
-                        <div className="avatar" style={{width: 22, height: 22, fontSize: 10, background: colorForPerson(s.to, people)}}>{initials(s.to)}</div>
+                        <div className="avatar" style={{width: 22, height: 22, fontSize: 10, background: softColorForPerson(s.to, people)}}>{avatarFor(s.to, trip.personEmojis)}</div>
                         <strong>{s.to}</strong>
                         <span className="settle-amt mono">{fmt(s.amt, symbol)}</span>
                       </div>
                     ))}
                   </div>
-                </>
+                </details>
               )}
             </div>
           )
@@ -1679,7 +1772,14 @@ function App() {
             <div className="people-row">
               {people.map(p => (
                 <div className="chip" key={p}>
-                  <div className="avatar" style={{background: colorForPerson(p, people)}}>{initials(p)}</div>
+                  <div
+                    className="avatar"
+                    style={{background: softColorForPerson(p, people), cursor: 'pointer'}}
+                    onClick={() => setShowEmojiPickerFor(p)}
+                    title="Tap to change avatar"
+                  >
+                    {avatarFor(p, trip.personEmojis)}
+                  </div>
                   {p}
                   {confirmDeletePerson === p ? (
                     <>
@@ -1774,6 +1874,7 @@ function App() {
           symbol={symbol}
           tripCurrency={currency}
           pinnedCurrencies={trip.pinnedCurrencies || []}
+          personEmojis={trip.personEmojis}
           tripCode={tripCode}
           initial={editingExpense}
           onClose={() => { setShowAddExpense(false); setEditingExpense(null); }}
@@ -1786,7 +1887,7 @@ function App() {
   );
 }
 
-function AddExpenseModal({ people, symbol, tripCurrency, pinnedCurrencies = [], tripCode, initial, onClose, onSave }) {
+function AddExpenseModal({ people, symbol, tripCurrency, pinnedCurrencies = [], personEmojis, tripCode, initial, onClose, onSave }) {
   const isEdit = !!initial;
   const [description, setDescription] = useState(initial ? initial.description : '');
   // If editing a foreign-currency expense, show the original typed amount/currency,
@@ -1915,7 +2016,7 @@ function AddExpenseModal({ people, symbol, tripCurrency, pinnedCurrencies = [], 
           <div className="payer-row">
             {people.map(p => (
               <button key={p} className={'select-chip' + (paidBy === p ? ' active' : '')} onClick={() => setPaidBy(p)}>
-                <div className="avatar" style={{width: 18, height: 18, fontSize: 9, background: colorForPerson(p, people)}}>{initials(p)}</div>
+                <div className="avatar" style={{width: 18, height: 18, fontSize: 11, background: softColorForPerson(p, people)}}>{avatarFor(p, personEmojis)}</div>
                 {p}
               </button>
             ))}
@@ -1928,7 +2029,7 @@ function AddExpenseModal({ people, symbol, tripCurrency, pinnedCurrencies = [], 
             {people.map(p => (
               <label className="split-row" key={p}>
                 <input type="checkbox" checked={splitAmong.includes(p)} onChange={() => toggle(p)} />
-                <div className="avatar" style={{width: 20, height: 20, fontSize: 9.5, background: colorForPerson(p, people)}}>{initials(p)}</div>
+                <div className="avatar" style={{width: 20, height: 20, fontSize: 12, background: softColorForPerson(p, people)}}>{avatarFor(p, personEmojis)}</div>
                 {p}
               </label>
             ))}
