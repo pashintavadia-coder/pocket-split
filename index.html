@@ -174,7 +174,7 @@
   .total-spend-sub { font-size: 11.5px; color: var(--text-faint); margin-top: 2px; }
 
   .glass-card h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-faint); margin: 0 0 12px; font-weight: 700; }
-  .balance-row { display: flex; justify-content: space-between; align-items: center; padding: 0; gap: 10px; }
+  .balance-row { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-top: 1px solid var(--border-soft); gap: 10px; }
   .balance-row:first-of-type { border-top: none; }
   .person-tag { display: flex; align-items: center; gap: 9px; }
   .avatar { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; color: #fff; flex-shrink: 0; }
@@ -297,12 +297,20 @@
   }
   .emoji-option:active { background: var(--google-blue-tint); }
 
-  /* Visual balance bars */
-  .bar-track { width: 100%; height: 6px; background-color: #E1E3E1; border-radius: 999px; overflow: hidden; margin-top: 6px; }
-  .bar-fill-positive { height: 100%; background-color: var(--google-green); border-radius: 999px; }
-  .bar-fill-negative { height: 100%; background-color: var(--google-red); border-radius: 999px; float: right; }
-  .balance-row-wrap { padding: 11px 0; border-top: 1px solid var(--border-soft); }
-  .balance-row-wrap:first-of-type { border-top: none; }
+  /* Total spent + donut chart, side by side */
+  .total-spend-flex { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .total-spend-info { flex: 1; min-width: 0; }
+  .donut-chart {
+    width: 100px; height: 100px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); flex-shrink: 0;
+  }
+  .donut-inner { width: 70px; height: 70px; border-radius: 50%; background-color: var(--surface-card, #F0F4F9); }
+
+  /* Clean balance rows — no bars, avatar + name left, amount right */
+  .balance-amt-clean { font-family: 'Outfit', sans-serif; font-size: 15.5px; font-weight: 700; white-space: nowrap; }
+  .balance-amt-clean.amt-positive { color: var(--google-green); }
+  .balance-amt-clean.amt-negative { color: var(--google-red); }
+  .balance-amt-clean.amt-zero { color: var(--text-faint); }
 
   /* Settlement accordion */
   .settle-details { margin-top: 20px; }
@@ -310,9 +318,10 @@
     display: flex; align-items: center; gap: 10px; cursor: pointer;
     background: var(--surface-inner); border-radius: 9999px; padding: 13px 18px;
     font-family: 'Outfit', sans-serif; font-weight: 700; font-size: 14px; color: var(--text-main);
-    box-shadow: var(--shadow-sm); list-style: none;
+    box-shadow: var(--shadow-sm);
   }
   details > summary::-webkit-details-marker { display: none; }
+  details > summary { list-style: none; outline: none; }
   .settle-badge {
     background: var(--google-blue-tint); color: var(--google-blue-dark);
     border-radius: 9999px; padding: 2px 10px; font-size: 12px; font-weight: 800;
@@ -339,13 +348,6 @@
     cursor: pointer; box-shadow: var(--shadow-sm); font-size: 17px; flex-shrink: 0;
   }
 
-  .spend-chart { margin: 16px 0 4px; }
-  .spend-chart-row { margin-bottom: 12px; }
-  .spend-chart-labels { display: flex; justify-content: space-between; font-size: 12.5px; margin-bottom: 5px; }
-  .spend-chart-name { font-weight: 600; color: var(--text-main); }
-  .spend-chart-amt { color: var(--text-sub); font-family: 'JetBrains Mono', monospace; }
-  .spend-chart-track { background: var(--surface-sunken); border-radius: 8px; height: 10px; overflow: hidden; }
-  .spend-chart-fill { height: 100%; border-radius: 8px; }
   .invite-option {
     display: flex; align-items: center; justify-content: space-between;
     background: var(--surface-inner); border: none; border-radius: 9999px;
@@ -590,11 +592,6 @@ function softColorForPerson(name, people) {
 function initials(name) { return name.trim().slice(0, 2).toUpperCase(); }
 
 const EMOJI_LIST = ['🦊', '🦁', '👻', '🍕', '🚀', '🐸', '🐼', '🦄', '🌵', '🍩', '🎈', '🐙'];
-function randomEmoji(exclude = []) {
-  const unused = EMOJI_LIST.filter((e) => !exclude.includes(e));
-  const pool = unused.length > 0 ? unused : EMOJI_LIST;
-  return pool[Math.floor(Math.random() * pool.length)];
-}
 function avatarFor(name, personEmojis) {
   return (personEmojis && personEmojis[name]) || initials(name);
 }
@@ -1148,15 +1145,7 @@ function App() {
     if (trip.people.some(p => p.toLowerCase() === name.toLowerCase())) {
       showToast('Already on the list'); return;
     }
-    mutate(prev => {
-      const usedEmojis = Object.values(prev.personEmojis || {});
-      const emoji = randomEmoji(usedEmojis);
-      return {
-        ...prev,
-        people: [...prev.people, name],
-        personEmojis: { ...(prev.personEmojis || {}), [name]: emoji },
-      };
-    });
+    mutate(prev => ({ ...prev, people: [...prev.people, name] }));
     setNewPersonName('');
   };
 
@@ -1383,7 +1372,6 @@ function App() {
 
   const settlements = simplifySettlements(balances);
   const sortedPeople = [...people].sort((a, b) => (balances[b] || 0) - (balances[a] || 0));
-  const maxAbsBalance = Math.max(1, ...people.map(p => Math.abs(balances[p] || 0)));
   const totalSpent = expenses.reduce((sum, e) => sum + e.amount, 0);
 
   const paidTotals = {};
@@ -1391,6 +1379,23 @@ function App() {
   expenses.forEach(exp => { paidTotals[exp.paidBy] = (paidTotals[exp.paidBy] || 0) + exp.amount; });
   const maxPaid = Math.max(1, ...people.map(p => paidTotals[p] || 0));
   const chartPeople = [...people].sort((a, b) => (paidTotals[b] || 0) - (paidTotals[a] || 0));
+
+  // Donut chart: a conic-gradient slice per person, sized by their share of
+  // total spend, colored with their assigned (vivid) avatar color.
+  let donutGradient = 'var(--border)';
+  if (totalSpent > 0 && chartPeople.length > 0) {
+    let cursor = 0;
+    const slices = chartPeople.map((p) => {
+      const amt = paidTotals[p] || 0;
+      const pct = (amt / totalSpent) * 100;
+      const start = cursor;
+      cursor += pct;
+      return `${colorForPerson(p, people)} ${start}% ${cursor}%`;
+    });
+    donutGradient = `conic-gradient(${slices.join(', ')})`;
+  }
+
+  const fmtBalance = (n, sym) => `${sym}${Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   const exportFileName = (ext) => {
     const base = (trip.name || tripCode).replace(/[^a-z0-9]+/gi, '-').toLowerCase();
@@ -1690,54 +1695,33 @@ function App() {
             </div>
           ) : (
             <div className="glass-card">
-              <div className="total-spend-row">
-                <span className="total-spend-label">Total spent</span>
-                <span className="total-spend-amt mono">{fmt(totalSpent, symbol)}</span>
-              </div>
-              <div className="total-spend-sub">{fmt(totalSpent / people.length, symbol)} avg per person</div>
-
-              {expenses.length > 0 && (
-                <div className="spend-chart">
-                  <h3 style={{marginTop: 18}}>Who's paid what</h3>
-                  {chartPeople.map(p => {
-                    const amt = paidTotals[p] || 0;
-                    const pct = Math.max(4, Math.round((amt / maxPaid) * 100));
-                    return (
-                      <div className="spend-chart-row" key={p}>
-                        <div className="spend-chart-labels">
-                          <span className="spend-chart-name">{p}</span>
-                          <span className="spend-chart-amt mono">{fmt(amt, symbol)}</span>
-                        </div>
-                        <div className="spend-chart-track">
-                          <div className="spend-chart-fill" style={{width: pct + '%', background: colorForPerson(p, people)}}></div>
-                        </div>
-                      </div>
-                    );
-                  })}
+              <div className="total-spend-flex">
+                <div className="total-spend-info">
+                  <div className="total-spend-row">
+                    <span className="total-spend-label">Total spent</span>
+                    <span className="total-spend-amt mono">{fmt(totalSpent, symbol)}</span>
+                  </div>
+                  <div className="total-spend-sub">{fmt(totalSpent / people.length, symbol)} avg per person</div>
                 </div>
-              )}
+                <div className="donut-chart" style={{background: donutGradient}}>
+                  <div className="donut-inner"></div>
+                </div>
+              </div>
 
-              <h3 style={{marginTop: 20}}>Who owes what</h3>
+              <h3 style={{marginTop: 22}}>Who owes what</h3>
               {sortedPeople.map(p => {
                 const b = balances[p] || 0;
                 const cls = b > 0.005 ? 'amt-positive' : b < -0.005 ? 'amt-negative' : 'amt-zero';
                 const label = b > 0.005 ? 'is owed' : b < -0.005 ? 'owes' : 'settled up';
-                const barPct = Math.max(0, Math.round((Math.abs(b) / maxAbsBalance) * 100));
                 return (
-                  <div className="balance-row-wrap" key={p}>
-                    <div className="balance-row">
-                      <div className="person-tag">
-                        <div className="avatar" style={{background: softColorForPerson(p, people)}}>{avatarFor(p, trip.personEmojis)}</div>
-                        <span className="balance-name">{p}</span>
-                      </div>
-                      <span className={'balance-amt mono ' + cls}>
-                        {b === 0 ? 'settled up' : `${label} ${fmt(Math.abs(b), symbol)}`}
-                      </span>
+                  <div className="balance-row" key={p}>
+                    <div className="person-tag">
+                      <div className="avatar" style={{background: softColorForPerson(p, people)}}>{avatarFor(p, trip.personEmojis)}</div>
+                      <span className="balance-name">{p}</span>
                     </div>
-                    <div className="bar-track">
-                      {b > 0.005 && <div className="bar-fill-positive" style={{width: barPct + '%'}}></div>}
-                      {b < -0.005 && <div className="bar-fill-negative" style={{width: barPct + '%'}}></div>}
-                    </div>
+                    <span className={'balance-amt-clean ' + cls}>
+                      {b === 0 ? 'settled up' : `${label} ${fmtBalance(b, symbol)}`}
+                    </span>
                   </div>
                 );
               })}
