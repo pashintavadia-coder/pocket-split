@@ -404,7 +404,7 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js";
   import {
     initializeFirestore, persistentLocalCache, persistentSingleTabManager,
-    doc, setDoc, getDoc, onSnapshot
+    doc, setDoc, getDoc, onSnapshot, collection, updateDoc, arrayUnion, arrayRemove, deleteField
   } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js";
 
   const firebaseConfig = {
@@ -429,7 +429,7 @@
     const db = initializeFirestore(app, {
       localCache: persistentLocalCache({ tabManager: persistentSingleTabManager({}) }),
     });
-    window.__firebase = { db, doc, setDoc, getDoc, onSnapshot };
+    window.__firebase = { db, doc, setDoc, getDoc, onSnapshot, collection, updateDoc, arrayUnion, arrayRemove, deleteField };
   }
   window.__firebaseReady = true;
 </script>
@@ -912,7 +912,7 @@ function FanStack() {
   );
 }
 
-const EMPTY_TRIP = { people: [], expenses: [], archivedExpenses: [], currency: 'USD', name: null, pinnedCurrencies: [], personEmojis: {} };
+const EMPTY_TRIP = { people: [], currency: 'USD', name: null, pinnedCurrencies: [], personEmojis: {} };
 const STORAGE_KEY = 'pocketSplitTripCode';
 const HISTORY_KEY = 'pocketSplitTripHistory';
 const HISTORY_LIMIT = 20;
@@ -962,7 +962,18 @@ function App() {
   const [showTripSettings, setShowTripSettings] = useState(false);
   const [tripHistory, setTripHistory] = useState(() => loadTripHistory());
   const [loading, setLoading] = useState(false);
-  const [trip, setTrip] = useState(null);
+  const [tripMeta, setTripMeta] = useState(null);
+  const [expenseDocs, setExpenseDocs] = useState([]);
+  const migratedRef = useRef(false);
+  // Derived, not stateful — every render recomputes this from the two real
+  // Firestore-backed pieces above. Keeps the exact same shape the rest of
+  // the app already expects (trip.people, trip.expenses, etc.), so none of
+  // the render logic below has to change.
+  const trip = tripMeta ? {
+    ...tripMeta,
+    expenses: expenseDocs.filter(e => !e.archivedAt),
+    archivedExpenses: expenseDocs.filter(e => e.archivedAt),
+  } : null;
   const [toast, setToast] = useState('');
   const [showAddExpense, setShowAddExpense] = useState(false);
   const [editingExpense, setEditingExpense] = useState(null);
@@ -1014,40 +1025,96 @@ function App() {
     toastTimer.current = setTimeout(() => setToast(''), 2000);
   };
 
-  // Real-time listener: this is the whole sync mechanism. Any device that
-  // writes to this trip doc updates every other open device automatically.
+  // Two independent real-time listeners — this is the actual fix for the
+  // race condition. Expenses used to live as an array on the main trip doc,
+  // so two people adding expenses offline and reconnecting would have the
+  // second sync silently overwrite the first person's addition (last write
+  // wins on the whole document). Now each expense is its own document in a
+  // subcollection, so concurrent writes from different people never
+  // collide — Firestore only ever overwrites a single expense doc, never
+  // the whole list.
   useEffect(() => {
     if (!tripCode || !window.__firebase) return;
-    const { db, doc, onSnapshot } = window.__firebase;
+    const { db, doc, onSnapshot, collection } = window.__firebase;
     setLoading(true);
-    const unsub = onSnapshot(doc(db, 'trips', tripCode), (snap) => {
+    migratedRef.current = false;
+
+    let metaLoaded = false;
+    let expensesLoaded = false;
+    const checkDoneLoading = () => { if (metaLoaded && expensesLoaded) setLoading(false); };
+
+    // Listener 1: trip metadata (name, currency, pinnedCurrencies, people, personEmojis)
+    const unsubMeta = onSnapshot(doc(db, 'trips', tripCode), (snap) => {
       if (snap.exists()) {
         const data = snap.data();
         if (!data.currency) data.currency = 'USD';
-        setTrip(data);
+        setTripMeta(data);
         upsertHistory({ code: tripCode, name: data.name || null, currency: data.currency, lastVisited: Date.now() });
+
+        // One-time lazy migration for trips created before this refactor —
+        // their expenses/archivedExpenses still live as arrays on this doc.
+        const hasLegacyExpenses = (data.expenses && data.expenses.length > 0) || (data.archivedExpenses && data.archivedExpenses.length > 0);
+        if (hasLegacyExpenses && !migratedRef.current) {
+          migratedRef.current = true;
+          migrateLegacyExpenses(tripCode, data);
+        }
       } else {
         // A remembered code that no longer points to a real trip (deleted,
         // typo'd into storage some other way, etc). Don't get stuck on a
         // permanent loading screen — bounce back to the start screen.
         try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
         setTripCode(null);
-        setTrip(null);
+        setTripMeta(null);
+        setExpenseDocs([]);
         showToast("That trip couldn't be found — start or join again");
       }
-      setLoading(false);
+      metaLoaded = true;
+      checkDoneLoading();
     }, (err) => {
       showToast('Connection issue — check your Firebase setup');
-      setLoading(false);
+      metaLoaded = true;
+      checkDoneLoading();
     });
-    return () => unsub();
+
+    // Listener 2: the live expenses feed (both active and archived — split
+    // client-side by the presence of archivedAt, so no extra Firestore
+    // query/index is needed).
+    const unsubExpenses = onSnapshot(collection(db, 'trips', tripCode, 'expenses'), (snap) => {
+      setExpenseDocs(snap.docs.map((d) => ({ id: d.id, ...d.data() })));
+      expensesLoaded = true;
+      checkDoneLoading();
+    }, (err) => {
+      expensesLoaded = true;
+      checkDoneLoading();
+    });
+
+    return () => { unsubMeta(); unsubExpenses(); };
   }, [tripCode]);
 
-  const writeTrip = async (nextTrip) => {
+  const migrateLegacyExpenses = async (code, data) => {
+    if (!window.__firebase) return;
+    const { db, doc, setDoc, updateDoc, deleteField } = window.__firebase;
+    const legacyActive = data.expenses || [];
+    const legacyArchived = data.archivedExpenses || [];
+    try {
+      for (const exp of legacyActive) {
+        await setDoc(doc(db, 'trips', code, 'expenses', exp.id), exp);
+      }
+      for (const exp of legacyArchived) {
+        await setDoc(doc(db, 'trips', code, 'expenses', exp.id), { ...exp, archivedAt: exp.archivedAt || Date.now() });
+      }
+      await updateDoc(doc(db, 'trips', code), { expenses: deleteField(), archivedExpenses: deleteField() });
+    } catch (e) {
+      // Non-fatal — if this fails (e.g. offline), the legacy fields stay
+      // put and migration will just retry next time the trip loads.
+    }
+  };
+
+  const writeTripMeta = async (nextMeta) => {
     if (!window.__firebase || !tripCode) return;
     const { db, doc, setDoc } = window.__firebase;
     try {
-      await setDoc(doc(db, 'trips', tripCode), nextTrip, { merge: false });
+      await setDoc(doc(db, 'trips', tripCode), nextMeta, { merge: true });
     } catch (e) {
       showToast("Couldn't save — check your connection");
     }
@@ -1077,7 +1144,8 @@ function App() {
   const leaveTrip = () => {
     try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
     setTripCode(null);
-    setTrip(null);
+    setTripMeta(null);
+    setExpenseDocs([]);
   };
 
   const createTrip = async () => {
@@ -1133,31 +1201,62 @@ function App() {
     setTripCode(code);
   };
 
-  const mutate = (updater) => {
-    if (!trip) return;
-    const next = updater(trip);
-    setTrip(next); // optimistic, onSnapshot will confirm it moments later
-    writeTrip(next);
+  // Metadata-only mutations (currency, pinnedCurrencies) — still a
+  // read-modify-write on the main doc, but that's fine now: this document
+  // no longer contains expenses at all, so it can't collide with expense
+  // writes, and metadata edits are rare/low-concurrency compared to
+  // expenses.
+  const mutateMeta = (updater) => {
+    if (!tripMeta) return;
+    const next = updater(tripMeta);
+    setTripMeta(next); // optimistic, onSnapshot will confirm it moments later
+    writeTripMeta(next);
   };
 
-  const addPerson = () => {
+  const addPerson = async () => {
     const name = newPersonName.trim();
     if (!name) return;
     if (trip.people.some(p => p.toLowerCase() === name.toLowerCase())) {
       showToast('Already on the list'); return;
     }
-    mutate(prev => ({ ...prev, people: [...prev.people, name] }));
+    setTripMeta(prev => prev ? { ...prev, people: [...prev.people, name] } : prev); // optimistic
     setNewPersonName('');
+    if (!window.__firebase || !tripCode) return;
+    const { db, doc, updateDoc, arrayUnion } = window.__firebase;
+    try {
+      // arrayUnion is an atomic server-side operation — two people adding
+      // different names offline at the same time will both land correctly
+      // instead of one overwriting the other.
+      await updateDoc(doc(db, 'trips', tripCode), { people: arrayUnion(name) });
+    } catch (e) {
+      showToast("Couldn't save — check your connection");
+    }
   };
 
-  const setPersonEmoji = (name, emoji) => {
-    mutate(prev => ({ ...prev, personEmojis: { ...(prev.personEmojis || {}), [name]: emoji } }));
+  const setPersonEmoji = async (name, emoji) => {
+    setTripMeta(prev => prev ? { ...prev, personEmojis: { ...(prev.personEmojis || {}), [name]: emoji } } : prev); // optimistic
+    if (!window.__firebase || !tripCode) return;
+    const { db, doc, setDoc } = window.__firebase;
+    try {
+      // setDoc with merge:true deep-merges nested map fields, so this only
+      // touches this one person's emoji key, not everyone else's.
+      await setDoc(doc(db, 'trips', tripCode), { personEmojis: { [name]: emoji } }, { merge: true });
+    } catch (e) {
+      showToast("Couldn't save — check your connection");
+    }
   };
 
-  const removePerson = (name) => {
-    mutate(prev => ({ ...prev, people: prev.people.filter(p => p !== name) }));
+  const removePerson = async (name) => {
+    setTripMeta(prev => prev ? { ...prev, people: prev.people.filter(p => p !== name) } : prev); // optimistic
     setConfirmDeletePerson(null);
     showToast(`${name} removed`);
+    if (!window.__firebase || !tripCode) return;
+    const { db, doc, updateDoc, arrayRemove } = window.__firebase;
+    try {
+      await updateDoc(doc(db, 'trips', tripCode), { people: arrayRemove(name) });
+    } catch (e) {
+      showToast("Couldn't save — check your connection");
+    }
   };
 
   const requestRemovePerson = (name) => {
@@ -1169,43 +1268,52 @@ function App() {
     }
   };
 
-  const saveExpense = (expense) => {
-    mutate(prev => {
-      const exists = prev.expenses.some(e => e.id === expense.id);
-      const nextExpenses = exists
-        ? prev.expenses.map(e => (e.id === expense.id ? expense : e))
-        : [...prev.expenses, expense];
-      return { ...prev, expenses: nextExpenses };
-    });
-    showToast(editingExpense ? 'Expense updated' : 'Added to the tab');
+  // Each expense is its own document — this is the actual fix. Two people
+  // adding different expenses offline and reconnecting both land cleanly,
+  // since they're writing to different documents, not competing to
+  // overwrite the same array.
+  const saveExpense = async (expense) => {
+    const isNew = !editingExpense;
+    setExpenseDocs(prev => {
+      const exists = prev.some(e => e.id === expense.id);
+      return exists ? prev.map(e => (e.id === expense.id ? expense : e)) : [...prev, expense];
+    }); // optimistic
+    showToast(isNew ? 'Added to the tab' : 'Expense updated');
+    if (!window.__firebase || !tripCode) return;
+    const { db, doc, setDoc } = window.__firebase;
+    try {
+      await setDoc(doc(db, 'trips', tripCode, 'expenses', expense.id), expense);
+    } catch (e) {
+      showToast("Couldn't save — check your connection");
+    }
   };
 
-  const deleteExpense = (id) => {
-    mutate(prev => {
-      const target = prev.expenses.find(e => e.id === id);
-      if (!target) return prev;
-      return {
-        ...prev,
-        expenses: prev.expenses.filter(e => e.id !== id),
-        archivedExpenses: [...(prev.archivedExpenses || []), { ...target, archivedAt: Date.now() }],
-      };
-    });
+  const deleteExpense = async (id) => {
+    const archivedAt = Date.now();
+    setExpenseDocs(prev => prev.map(e => (e.id === id ? { ...e, archivedAt } : e))); // optimistic
     setConfirmDeleteExpenseId(null);
     showToast('Expense archived');
+    if (!window.__firebase || !tripCode) return;
+    const { db, doc, updateDoc } = window.__firebase;
+    try {
+      // Archiving just sets a field on that one expense doc — it's never
+      // moved between arrays, so there's nothing to race with.
+      await updateDoc(doc(db, 'trips', tripCode, 'expenses', id), { archivedAt });
+    } catch (e) {
+      showToast("Couldn't save — check your connection");
+    }
   };
 
-  const restoreExpense = (id) => {
-    mutate(prev => {
-      const target = (prev.archivedExpenses || []).find(e => e.id === id);
-      if (!target) return prev;
-      const { archivedAt, ...restored } = target;
-      return {
-        ...prev,
-        archivedExpenses: (prev.archivedExpenses || []).filter(e => e.id !== id),
-        expenses: [...prev.expenses, restored],
-      };
-    });
+  const restoreExpense = async (id) => {
+    setExpenseDocs(prev => prev.map(e => (e.id === id ? { ...e, archivedAt: null } : e))); // optimistic
     showToast('Expense restored');
+    if (!window.__firebase || !tripCode) return;
+    const { db, doc, updateDoc } = window.__firebase;
+    try {
+      await updateDoc(doc(db, 'trips', tripCode, 'expenses', id), { archivedAt: null });
+    } catch (e) {
+      showToast("Couldn't save — check your connection");
+    }
   };
 
   const requestDeleteExpense = (id) => {
@@ -1216,7 +1324,7 @@ function App() {
       setConfirmDeletePerson(null);
     }
   };
-  const updateCurrency = (code) => mutate(prev => ({ ...prev, currency: code }));
+  const updateCurrency = (code) => mutateMeta(prev => ({ ...prev, currency: code }));
 
   if (window.__pocketSplitNeedsSetup) {
     return (
@@ -1652,7 +1760,7 @@ function App() {
         <ManageCurrenciesModal
           pinned={trip.pinnedCurrencies || []}
           onSave={(list) => {
-            mutate((prev) => ({ ...prev, pinnedCurrencies: list }));
+            mutateMeta((prev) => ({ ...prev, pinnedCurrencies: list }));
             setShowManageCurrencies(false);
             showToast('Trip currencies updated');
           }}
