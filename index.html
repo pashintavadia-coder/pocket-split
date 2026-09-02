@@ -185,7 +185,8 @@
   .amt-zero { color: var(--text-faint); }
 
   .settle-list { margin: 14px 0 4px; }
-  .settle-item { display: flex; align-items: center; gap: 8px; font-size: 13.5px; background: var(--google-blue-tint); border: 1px solid var(--google-blue-tint-border); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; color: var(--text-main); }
+  .settle-item { display: flex; align-items: center; gap: 8px; font-size: 13.5px; background: var(--surface-inner); border: none; border-bottom: 1px solid #F3F4F6; border-radius: 0; padding: 12px 4px; margin-bottom: 0; color: var(--text-main); }
+  .settle-item:last-child { border-bottom: none; }
   .settle-arrow { color: var(--google-blue); }
   .settle-amt { margin-left: auto; font-weight: 700; color: var(--google-blue-dark); }
 
@@ -227,10 +228,10 @@
   .chip .confirm-yes { background: var(--google-green); color: #FFFFFF; }
   .expense-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
   .expense-desc { font-size: 15px; font-weight: 600; color: var(--text-main); }
-  .expense-amt { font-size: 15px; font-weight: 700; white-space: nowrap; color: var(--google-blue-dark); }
+  .expense-amt { font-size: 15px; font-weight: 700; white-space: nowrap; color: var(--google-blue); }
   .expense-meta { font-size: 12.5px; color: var(--text-sub); margin-top: 6px; line-height: 1.5; }
   .expense-meta strong { color: var(--text-main); }
-  .expense-fx-note { font-size: 11.5px; color: var(--google-blue-dark); margin-top: 3px; font-family: 'JetBrains Mono', monospace; }
+  .expense-fx-note { font-size: 12px; color: #6B7280; margin-top: 3px; font-family: 'Outfit', sans-serif; }
   .expense-del { background: none; border: none; color: var(--text-faint); font-size: 11.5px; cursor: pointer; text-decoration: underline; margin-top: 8px; padding: 0; }
 
   .empty-state { text-align: center; padding: 34px 14px; color: var(--text-faint); font-size: 13.5px; border: 1.5px dashed var(--border); border-radius: 16px; background: var(--surface-sunken); }
@@ -599,7 +600,7 @@ function symbolFor(code) { return CURRENCY_MAP[code] ? CURRENCY_MAP[code].symbol
 function nameFor(code) { return CURRENCY_MAP[code] ? CURRENCY_MAP[code].name : code; }
 function fmt(n, symbol) {
   const sign = n < 0 ? '-' : '';
-  return sign + (symbol || '$') + Math.abs(n).toFixed(2);
+  return sign + (symbol || '$') + Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function simplifySettlements(balances) {
@@ -652,8 +653,8 @@ function CurrencyPickerModal({ pinned = [], excludeCodes = [], onSelect, onSelec
     if (!multiSelect) {
       return (
         <button key={c.code} className="currency-row" onClick={() => onSelect(c.code)}>
-          <span className="currency-row-symbol mono">{c.symbol}</span>
-          <span className="currency-row-code mono">{c.code}</span>
+          <span className="currency-row-symbol">{c.symbol}</span>
+          <span className="currency-row-code">{c.code}</span>
           <span className="currency-row-name">{c.name}</span>
         </button>
       );
@@ -669,7 +670,7 @@ function CurrencyPickerModal({ pinned = [], excludeCodes = [], onSelect, onSelec
         style={disabled ? { opacity: 0.4 } : undefined}
       >
         <span className="currency-row-check">{isPicked ? '✓' : ''}</span>
-        <span className="currency-row-code mono">{c.code}</span>
+        <span className="currency-row-code">{c.code}</span>
         <span className="currency-row-name">{c.name}</span>
       </button>
     );
@@ -743,7 +744,7 @@ function ManageCurrenciesModal({ pinned, onSave, onClose }) {
         <div className="pinned-chip-row">
           {list.map((code) => (
             <div className="chip" key={code}>
-              <span className="mono">{code}</span>
+              <span>{code}</span>
               <button onClick={() => remove(code)}>×</button>
             </div>
           ))}
@@ -783,7 +784,7 @@ function TripSettingsModal({ tripName, currency, symbol, onOpenCurrencyPicker, o
         <div className="settings-option-list">
           <button className="invite-option" onClick={onOpenCurrencyPicker}>
             <span>Group currency</span>
-            <span className="settings-option-value mono">{symbol} {currency}</span>
+            <span className="settings-option-value">{symbol} {currency}</span>
           </button>
           <button className="invite-option" onClick={onOpenManageCurrencies}>
             <span>Manage pinned currencies</span>
@@ -883,7 +884,7 @@ function ArchiveModal({ archivedExpenses, symbol, onRestore, onClose }) {
             <div className="archived-item" key={exp.id}>
               <div className="archived-top">
                 <span className="archived-desc">{exp.description || 'Expense'}</span>
-                <span className="archived-amt mono">{fmt(exp.amount, symbol)}</span>
+                <span className="archived-amt">{fmt(exp.amount, symbol)}</span>
               </div>
               <div className="archived-meta">
                 Paid by {exp.paidBy} · split {exp.splitAmong.length} way{exp.splitAmong.length !== 1 ? 's' : ''} · archived {exp.archivedAt ? new Date(exp.archivedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''}
@@ -1262,7 +1263,7 @@ function App() {
           <div className="pinned-chip-row">
             {newTripCurrencies.map((code) => (
               <div className="chip" key={code}>
-                <span className="mono">{code}</span>
+                <span>{code}</span>
                 <button onClick={() => setNewTripCurrencies((prev) => prev.filter((c) => c !== code))}>×</button>
               </div>
             ))}
@@ -1301,7 +1302,7 @@ function App() {
                 <div className="history-item" key={h.code} onClick={() => jumpToTrip(h.code)}>
                   <div className="history-main">
                     <span className="history-name">{h.name || h.code}</span>
-                    <span className="history-meta mono">{h.name ? h.code : ''} {h.name ? '·' : ''} {timeAgo(h.lastVisited)}</span>
+                    <span className="history-meta">{h.name ? h.code : ''} {h.name ? '·' : ''} {timeAgo(h.lastVisited)}</span>
                   </div>
                   <button
                     className="history-remove"
@@ -1394,8 +1395,6 @@ function App() {
     });
     donutGradient = `conic-gradient(${slices.join(', ')})`;
   }
-
-  const fmtBalance = (n, sym) => `${sym}${Math.abs(n).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   const exportFileName = (ext) => {
     const base = (trip.name || tripCode).replace(/[^a-z0-9]+/gi, '-').toLowerCase();
@@ -1699,7 +1698,7 @@ function App() {
                 <div className="total-spend-info">
                   <div className="total-spend-row">
                     <span className="total-spend-label">Total spent</span>
-                    <span className="total-spend-amt mono">{fmt(totalSpent, symbol)}</span>
+                    <span className="total-spend-amt">{fmt(totalSpent, symbol)}</span>
                   </div>
                   <div className="total-spend-sub">{fmt(totalSpent / people.length, symbol)} avg per person</div>
                 </div>
@@ -1720,7 +1719,7 @@ function App() {
                       <span className="balance-name">{p}</span>
                     </div>
                     <span className={'balance-amt-clean ' + cls}>
-                      {b === 0 ? 'settled up' : `${label} ${fmtBalance(b, symbol)}`}
+                      {b === 0 ? 'settled up' : `${label} ${fmt(Math.abs(b), symbol)}`}
                     </span>
                   </div>
                 );
@@ -1740,7 +1739,7 @@ function App() {
                         <span className="settle-arrow">→</span>
                         <div className="avatar" style={{width: 22, height: 22, fontSize: 10, background: softColorForPerson(s.to, people)}}>{avatarFor(s.to, trip.personEmojis)}</div>
                         <strong>{s.to}</strong>
-                        <span className="settle-amt mono">{fmt(s.amt, symbol)}</span>
+                        <span className="settle-amt">{fmt(s.amt, symbol)}</span>
                       </div>
                     ))}
                   </div>
@@ -1808,7 +1807,7 @@ function App() {
                 >
                   <div className="expense-top">
                     <span className="expense-desc">{exp.description || 'Expense'}</span>
-                    <span className="expense-amt mono">{fmt(exp.amount, symbol)}</span>
+                    <span className="expense-amt">{fmt(exp.amount, symbol)}</span>
                   </div>
                   <div className="expense-meta">
                     {formatExpenseDate(exp.ts)} · Paid by <strong>{exp.paidBy}</strong> · split {exp.splitAmong.length} way{exp.splitAmong.length !== 1 ? 's' : ''} ({exp.splitAmong.join(', ')})
