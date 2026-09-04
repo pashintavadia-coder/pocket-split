@@ -300,6 +300,34 @@
   .select-chip.active { background: var(--google-blue-tint); color: var(--google-blue-dark); box-shadow: 0 0 0 2px var(--google-blue) inset; }
   .split-list { display: flex; flex-direction: column; gap: 2px; }
   .split-row { display: flex; align-items: center; gap: 10px; padding: 9px 2px; border-bottom: 1px solid var(--border-soft); font-size: 14px; font-weight: 600; color: var(--text-main); }
+
+  .adjust-split-link {
+    background: none; border: none; color: var(--google-blue); font-size: 13.5px; font-weight: 700;
+    cursor: pointer; padding: 0; font-family: 'Outfit', sans-serif;
+  }
+  .split-section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .toggle-switch { position: relative; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--text-sub); }
+  .toggle-switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .toggle-track { width: 34px; height: 19px; background: var(--border); border-radius: 9999px; position: relative; transition: background-color 0.15s ease; flex-shrink: 0; }
+  .toggle-track::after { content: ''; position: absolute; top: 2px; left: 2px; width: 15px; height: 15px; background: #fff; border-radius: 50%; transition: transform 0.15s ease; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+  .toggle-switch input:checked + .toggle-track { background: var(--google-blue); }
+  .toggle-switch input:checked + .toggle-track::after { transform: translateX(15px); }
+
+  .split-row-exact { display: flex; align-items: center; gap: 10px; padding: 8px 2px; border-bottom: 1px solid var(--border-soft); }
+  .split-row-exact-name { flex: 1; font-size: 14px; font-weight: 600; color: var(--text-main); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .split-row-exact-input-wrap {
+    display: flex; align-items: center; gap: 4px; background: var(--surface-sunken); border-radius: 10px;
+    padding: 6px 10px; flex-shrink: 0;
+  }
+  .split-row-exact-input-wrap span { font-size: 13px; color: var(--text-faint); font-weight: 600; }
+  .split-row-exact-input-wrap input {
+    border: none !important; background: none !important; width: 64px; text-align: right;
+    font-family: 'Outfit', sans-serif; font-size: 14px; font-weight: 700; color: var(--text-main) !important;
+    padding: 0 !important; outline: none;
+  }
+  .split-sum-check { margin-top: 10px; font-size: 12.5px; font-weight: 700; padding: 9px 12px; border-radius: 10px; }
+  .split-sum-check.valid { background: rgba(19,115,51,0.08); color: var(--google-green); }
+  .split-sum-check.invalid { background: rgba(179,38,30,0.08); color: var(--google-red); }
   .split-row input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--google-blue); }
   .modal-actions { display: flex; gap: 10px; margin-top: 20px; }
   .modal-actions .btn { width: auto; flex: 1; }
@@ -690,6 +718,26 @@ function avatarBg(person, people) {
   return person.avatar ? softColorForPerson(person.id, people) : colorForPerson(person.id, people);
 }
 function personById(id, people) { return (people || []).find((p) => p.id === id) || null; }
+// Expenses saved before unequal splits shipped only have splitAmong (an
+// array of IDs, implicitly split equally). Rather than rewrite every old
+// expense document, this computes the equal split on the fly for those and
+// returns it in the same {id: amount} shape as the new splitOwed field —
+// every read site below goes through this, so old and new expenses are
+// indistinguishable to the rest of the app.
+function getSplitOwed(exp) {
+  if (exp.splitOwed) return exp.splitOwed;
+  const ids = exp.splitAmong || [];
+  const share = ids.length > 0 ? exp.amount / ids.length : 0;
+  const owed = {};
+  ids.forEach((id) => { owed[id] = share; });
+  return owed;
+}
+function isEqualSplitOwed(amount, owed) {
+  const ids = Object.keys(owed);
+  if (ids.length === 0) return true;
+  const share = amount / ids.length;
+  return ids.every((id) => Math.abs((owed[id] || 0) - share) < 0.01);
+}
 function personNameById(id, people) {
   const p = personById(id, people);
   return p ? p.name : 'Unknown';
@@ -1080,7 +1128,7 @@ function ArchiveModal({ archivedExpenses, people, symbol, onRestore, onClose }) 
                 <span className="archived-amt">{fmt(exp.amount, symbol)}</span>
               </div>
               <div className="archived-meta">
-                Paid by {personNameById(exp.paidBy, people)} · split {exp.splitAmong.length} way{exp.splitAmong.length !== 1 ? 's' : ''} · archived {exp.archivedAt ? new Date(exp.archivedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''}
+                Paid by {personNameById(exp.paidBy, people)} · split {Object.keys(getSplitOwed(exp)).length} way{Object.keys(getSplitOwed(exp)).length !== 1 ? 's' : ''} · archived {exp.archivedAt ? new Date(exp.archivedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''}
               </div>
               <button className="restore-btn" onClick={() => onRestore(exp.id)}>Restore</button>
             </div>
@@ -1572,7 +1620,7 @@ function App() {
   };
 
   const isPersonInActiveExpenses = (id) => {
-    return trip.expenses.some((exp) => exp.paidBy === id || exp.splitAmong.includes(id));
+    return trip.expenses.some((exp) => exp.paidBy === id || id in getSplitOwed(exp));
   };
 
   const requestRemovePerson = (id) => {
@@ -1812,12 +1860,12 @@ function App() {
   const balances = {};
   people.forEach(p => balances[p.id] = 0);
   expenses.forEach(exp => {
-    const share = exp.amount / exp.splitAmong.length;
     if (balances[exp.paidBy] === undefined) balances[exp.paidBy] = 0;
     balances[exp.paidBy] += exp.amount;
-    exp.splitAmong.forEach(id => {
+    const owed = getSplitOwed(exp);
+    Object.entries(owed).forEach(([id, amt]) => {
       if (balances[id] === undefined) balances[id] = 0;
-      balances[id] -= share;
+      balances[id] -= amt;
     });
   });
 
@@ -1869,6 +1917,8 @@ function App() {
 
     const sorted = [...expenses].sort((a, b) => (a.ts || 0) - (b.ts || 0));
     sorted.forEach((e) => {
+      const owed = getSplitOwed(e);
+      const equalSplit = isEqualSplitOwed(e.amount, owed);
       sheet.addRow({
         date: e.ts ? new Date(e.ts).toISOString().slice(0, 10) : '',
         desc: e.description || 'Expense',
@@ -1876,7 +1926,9 @@ function App() {
         origAmt: e.originalAmount != null ? e.originalAmount : '',
         origCur: e.originalCurrency || '',
         paidBy: personNameById(e.paidBy, people),
-        split: e.splitAmong.map((id) => personNameById(id, people)).join(', '),
+        split: equalSplit
+          ? Object.keys(owed).map((id) => personNameById(id, people)).join(', ')
+          : Object.entries(owed).map(([id, amt]) => `${personNameById(id, people)} (${amt.toFixed(2)})`).join(', '),
       });
     });
 
@@ -2279,7 +2331,11 @@ function App() {
             {expenses.length === 0 ? (
               <div className="empty-state">No expenses logged yet. Tap "Add expense" below to start the tab.</div>
             ) : (
-              [...expenses].sort((a, b) => (b.ts || 0) - (a.ts || 0)).map(exp => (
+              [...expenses].sort((a, b) => (b.ts || 0) - (a.ts || 0)).map(exp => {
+                const owed = getSplitOwed(exp);
+                const owedIds = Object.keys(owed);
+                const equalSplit = isEqualSplitOwed(exp.amount, owed);
+                return (
                 <div
                   className="expense-ticket"
                   key={exp.id}
@@ -2290,7 +2346,11 @@ function App() {
                     <span className="expense-amt">{fmt(exp.amount, symbol)}</span>
                   </div>
                   <div className="expense-meta">
-                    {formatExpenseDate(exp.ts)} · Paid by <strong>{personNameById(exp.paidBy, people)}</strong> · split {exp.splitAmong.length} way{exp.splitAmong.length !== 1 ? 's' : ''} ({exp.splitAmong.map(id => personNameById(id, people)).join(', ')})
+                    {formatExpenseDate(exp.ts)} · Paid by <strong>{personNameById(exp.paidBy, people)}</strong> · split {owedIds.length} way{owedIds.length !== 1 ? 's' : ''} ({
+                      equalSplit
+                        ? owedIds.map(id => personNameById(id, people)).join(', ')
+                        : owedIds.map(id => `${personNameById(id, people)} ${fmt(owed[id], symbol)}`).join(', ')
+                    })
                   </div>
                   {exp.originalCurrency && (
                     <div className="expense-fx-note">
@@ -2313,7 +2373,8 @@ function App() {
                     </button>
                   )}
                 </div>
-              ))
+                );
+              })
             )}
           </>
         )}
@@ -2367,8 +2428,25 @@ function AddExpenseModal({ people, symbol, tripCurrency, pinnedCurrencies = [], 
     }
     return tripCurrency;
   });
+  const initialOwed = initial ? getSplitOwed(initial) : null;
+  const initialSplitAmong = initial ? Object.keys(initialOwed) : people.map(p => p.id);
+  const initialIsCustom = initial
+    ? !(initialSplitAmong.length === people.length && isEqualSplitOwed(initial.amount, initialOwed))
+    : false;
+  const initialIsExact = initial ? !isEqualSplitOwed(initial.amount, initialOwed) : false;
+
   const [paidBy, setPaidBy] = useState(initial ? initial.paidBy : (people[0] ? people[0].id : null));
-  const [splitAmong, setSplitAmong] = useState(initial ? [...initial.splitAmong] : people.map(p => p.id));
+  const [splitAmong, setSplitAmong] = useState(initialSplitAmong);
+  const [showAdjustSplit, setShowAdjustSplit] = useState(initialIsCustom);
+  const [exactAmountsMode, setExactAmountsMode] = useState(initialIsExact);
+  const [manualSplitAmounts, setManualSplitAmounts] = useState(() => {
+    if (initial && initialOwed) {
+      const seeded = {};
+      Object.keys(initialOwed).forEach((id) => { seeded[id] = String(initialOwed[id]); });
+      return seeded;
+    }
+    return {};
+  });
   const [converting, setConverting] = useState(false);
   const [conversionError, setConversionError] = useState('');
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
@@ -2376,7 +2454,37 @@ function AddExpenseModal({ people, symbol, tripCurrency, pinnedCurrencies = [], 
   const [manualRate, setManualRate] = useState('');
 
   const toggle = (id) => setSplitAmong(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-  const canSave = description.trim() && parseFloat(amount) > 0 && paidBy && splitAmong.length > 0 && !converting;
+
+  const toggleExactMode = (on) => {
+    setExactAmountsMode(on);
+    if (on) {
+      // Seed with an equal split as a sensible starting point — the person
+      // then nudges individual amounts from there rather than starting
+      // from zero everywhere.
+      const share = (parseFloat(amount) || 0) / (splitAmong.length || 1);
+      const seeded = {};
+      splitAmong.forEach((id) => { seeded[id] = share.toFixed(2); });
+      setManualSplitAmounts(seeded);
+    }
+  };
+
+  const manualSum = splitAmong.reduce((s, id) => s + (parseFloat(manualSplitAmounts[id]) || 0), 0);
+  const manualValid = !exactAmountsMode || Math.abs(manualSum - (parseFloat(amount) || 0)) < 0.01;
+
+  const buildSplitOwed = (rate = 1) => {
+    if (exactAmountsMode) {
+      const owed = {};
+      splitAmong.forEach((id) => { owed[id] = (parseFloat(manualSplitAmounts[id]) || 0) * rate; });
+      return owed;
+    }
+    const amt = (parseFloat(amount) || 0) * rate;
+    const share = splitAmong.length > 0 ? amt / splitAmong.length : 0;
+    const owed = {};
+    splitAmong.forEach((id) => { owed[id] = share; });
+    return owed;
+  };
+
+  const canSave = description.trim() && parseFloat(amount) > 0 && paidBy && splitAmong.length > 0 && !converting && manualValid;
   const isForeign = expenseCurrency !== tripCurrency;
   const expenseSymbol = symbolFor(expenseCurrency);
 
@@ -2392,7 +2500,7 @@ function AddExpenseModal({ people, symbol, tripCurrency, pinnedCurrencies = [], 
         description: description.trim(),
         amount: typedAmount,
         paidBy,
-        splitAmong: [...splitAmong],
+        splitOwed: buildSplitOwed(),
         ts: isEdit ? initial.ts : Date.now(),
         // clear any leftover foreign-currency fields if this was edited back to the trip currency
         // (Firestore rejects `undefined` values, so null is used here instead)
@@ -2416,7 +2524,7 @@ function AddExpenseModal({ people, symbol, tripCurrency, pinnedCurrencies = [], 
         description: description.trim(),
         amount: converted,
         paidBy,
-        splitAmong: [...splitAmong],
+        splitOwed: buildSplitOwed(rate),
         ts: isEdit ? initial.ts : Date.now(),
         originalAmount: typedAmount,
         originalCurrency: expenseCurrency,
@@ -2441,7 +2549,7 @@ function AddExpenseModal({ people, symbol, tripCurrency, pinnedCurrencies = [], 
       description: description.trim(),
       amount: converted,
       paidBy,
-      splitAmong: [...splitAmong],
+      splitOwed: buildSplitOwed(rate),
       ts: isEdit ? initial.ts : Date.now(),
       originalAmount: typedAmount,
       originalCurrency: expenseCurrency,
@@ -2536,19 +2644,63 @@ function AddExpenseModal({ people, symbol, tripCurrency, pinnedCurrencies = [], 
         </div>
 
         <div className="field">
-          <span className="field-label">Split among</span>
-          <div className="split-list">
-            {people.map(p => (
-              <label className="split-row" key={p.id}>
-                <input type="checkbox" checked={splitAmong.includes(p.id)} onChange={() => toggle(p.id)} />
-                <div className="avatar" style={{width: 20, height: 20, fontSize: 12, background: avatarBg(p, people)}}>{avatarFor(p)}</div>
-                {p.name}
-              </label>
-            ))}
-          </div>
-          <div style={{fontSize: 12, color: 'var(--text-faint)', marginTop: 8}}>
-            Uncheck anyone who's sitting this one out — the rest split it evenly.
-          </div>
+          {!showAdjustSplit ? (
+            <button type="button" className="adjust-split-link" onClick={() => setShowAdjustSplit(true)}>
+              Adjust split…
+            </button>
+          ) : (
+            <>
+              <div className="split-section-header">
+                <span className="field-label" style={{marginBottom: 0}}>Split among</span>
+                <label className="toggle-switch">
+                  <input type="checkbox" checked={exactAmountsMode} onChange={(e) => toggleExactMode(e.target.checked)} />
+                  <span className="toggle-track"></span>
+                  Enter exact amounts
+                </label>
+              </div>
+
+              {!exactAmountsMode ? (
+                <>
+                  <div className="split-list">
+                    {people.map(p => (
+                      <label className="split-row" key={p.id}>
+                        <input type="checkbox" checked={splitAmong.includes(p.id)} onChange={() => toggle(p.id)} />
+                        <div className="avatar" style={{width: 20, height: 20, fontSize: 12, background: avatarBg(p, people)}}>{avatarFor(p)}</div>
+                        {p.name}
+                      </label>
+                    ))}
+                  </div>
+                  <div style={{fontSize: 12, color: 'var(--text-faint)', marginTop: 8}}>
+                    Uncheck anyone who's sitting this one out — the rest split it evenly.
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="split-list">
+                    {people.filter(p => splitAmong.includes(p.id)).map(p => (
+                      <div className="split-row-exact" key={p.id}>
+                        <div className="avatar" style={{width: 20, height: 20, fontSize: 12, background: avatarBg(p, people)}}>{avatarFor(p)}</div>
+                        <span className="split-row-exact-name">{p.name}</span>
+                        <div className="split-row-exact-input-wrap">
+                          <span>{expenseSymbol}</span>
+                          <input
+                            type="number" inputMode="decimal" placeholder="0.00"
+                            value={manualSplitAmounts[p.id] ?? ''}
+                            onChange={(e) => setManualSplitAmounts(prev => ({ ...prev, [p.id]: e.target.value }))}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className={'split-sum-check ' + (manualValid ? 'valid' : 'invalid')}>
+                    {manualValid
+                      ? '✓ Matches the total'
+                      : `Sums to ${expenseSymbol}${manualSum.toFixed(2)} — needs to equal ${expenseSymbol}${(parseFloat(amount) || 0).toFixed(2)}`}
+                  </div>
+                </>
+              )}
+            </>
+          )}
         </div>
 
         <div className="modal-actions">
