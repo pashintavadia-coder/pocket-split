@@ -80,6 +80,8 @@
 
   .header { padding: 22px 20px 18px; position: relative; }
   .logo-row { display: flex; align-items: center; gap: 10px; }
+  .logo-row-top { justify-content: space-between; width: 100%; }
+  .logo-row-brand { display: flex; align-items: center; gap: 10px; }
   .fan-stack { position: relative; width: 40px; height: 34px; flex-shrink: 0; }
   .fan-card {
     position: absolute; width: 18px; height: 24px; border-radius: 5px; top: 3px; left: 11px;
@@ -104,14 +106,13 @@
     position: relative; z-index: 2; text-align: left;
   }
   .switch-group-link {
-    display: flex; align-items: center; justify-content: center;
-    height: 40px; box-sizing: border-box;
-    background: var(--surface-inner); border: 1px solid #E5E7EB; border-radius: 9999px;
-    padding: 0 14px; box-shadow: var(--shadow-sm);
-    color: var(--google-blue); font-size: 13px; font-weight: 600;
+    background: none; border: none; box-shadow: none; padding: 0;
+    color: #6B7280; font-size: 14px; font-weight: 600;
     font-family: 'Outfit', sans-serif;
     text-decoration: none; cursor: pointer; flex-shrink: 0;
+    transition: color 0.15s ease;
   }
+  .switch-group-link:hover, .switch-group-link:active { color: #1F2937; }
   .header-controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; position: relative; z-index: 2; }
   .pill {
     display: flex; align-items: center; justify-content: center; gap: 6px;
@@ -259,7 +260,7 @@
   .expense-top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
   .expense-desc { font-size: 15px; font-weight: 600; color: var(--text-main); }
   .expense-amt { font-size: 15px; font-weight: 700; white-space: nowrap; color: var(--google-blue); }
-  .expense-meta { font-size: 12.5px; color: var(--text-sub); margin-top: 6px; line-height: 1.5; }
+  .expense-meta { font-size: 12.5px; color: #4B5563; margin-top: 6px; line-height: 1.5; }
   .expense-meta strong { color: var(--text-main); }
   .expense-fx-note { font-size: 12px; color: #6B7280; margin-top: 3px; font-family: 'Outfit', sans-serif; }
   .expense-del { background: none; border: none; color: var(--text-faint); font-size: 11.5px; cursor: pointer; text-decoration: underline; margin-top: 8px; padding: 0; }
@@ -378,8 +379,8 @@
   }
   .tab-btn {
     flex: 1; background: none; border: none; border-bottom: 3px solid transparent;
-    margin-bottom: -1px; padding: 10px 8px 12px;
-    font-size: 13.5px; font-weight: 700; color: var(--text-sub); cursor: pointer;
+    margin-bottom: -1px; padding: 11px 8px 13px;
+    font-size: 15px; font-weight: 600; color: var(--text-sub); cursor: pointer;
     font-family: 'Outfit', sans-serif; transition: color 0.15s ease, border-color 0.15s ease;
   }
   .tab-btn.active { background: none; color: var(--google-blue); box-shadow: none; border-bottom-color: var(--google-blue); }
@@ -1058,6 +1059,12 @@ function App() {
   const [editingPerson, setEditingPerson] = useState(null);
   const [showInviteFallback, setShowInviteFallback] = useState(false);
   const [activeTab, setActiveTab] = useState('summary');
+
+  // Always land on Summary when opening or switching to a group, rather
+  // than leaving whatever tab was active for a previous trip.
+  useEffect(() => {
+    setActiveTab('summary');
+  }, [tripCode]);
   const [showTripSettings, setShowTripSettings] = useState(false);
   const [tripHistory, setTripHistory] = useState(() => loadTripHistory());
   const [loading, setLoading] = useState(false);
@@ -1560,7 +1567,7 @@ function App() {
         <h2 className="display">Split it, don't sweat it</h2>
         <p>No logins. No complicated math. Create a group in seconds and share the code to track expenses live.</p>
         <div className="field">
-          <span className="field-label">Name this trip (optional)</span>
+          <span className="field-label">Name this group (optional)</span>
           <input
             type="text" placeholder="e.g. Goa 2026" value={newTripName}
             onChange={(e) => setNewTripName(e.target.value)}
@@ -1907,9 +1914,12 @@ function App() {
   return (
     <div>
       <div className="header">
-        <div className="logo-row">
-          <FanStack />
-          <span className="brand-name">Pocket Split</span>
+        <div className="logo-row logo-row-top">
+          <div className="logo-row-brand">
+            <FanStack />
+            <span className="brand-name">Pocket Split</span>
+          </div>
+          <button className="switch-group-link" onClick={leaveTrip}>Switch group</button>
         </div>
         <h1 className="trip-headline">{trip.name || 'Untitled Group'}</h1>
         <div className="header-controls">
@@ -1921,7 +1931,6 @@ function App() {
             {isOnline ? 'CODE' : 'OFFLINE'}&nbsp;<strong>{tripCode}</strong>
             <button onClick={() => { navigator.clipboard && navigator.clipboard.writeText(tripCode); showToast('Code copied'); }}>copy</button>
           </div>
-          <button className="switch-group-link" onClick={leaveTrip}>Switch group</button>
           <button className="settings-gear-btn" onClick={() => setShowTripSettings(true)} title="Group settings">⚙</button>
         </div>
       </div>
