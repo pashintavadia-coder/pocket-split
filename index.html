@@ -2202,7 +2202,7 @@ function App() {
             {expenses.length === 0 ? (
               <div className="empty-state">No expenses logged yet. Tap "Add expense" below to start the tab.</div>
             ) : (
-              [...expenses].reverse().map(exp => (
+              [...expenses].sort((a, b) => (b.ts || 0) - (a.ts || 0)).map(exp => (
                 <div
                   className="expense-ticket"
                   key={exp.id}
