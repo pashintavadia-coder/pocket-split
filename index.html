@@ -371,6 +371,10 @@
   }
   .settle-details .settle-list { margin-top: 12px; }
   .settings-option-value { color: var(--text-faint); font-size: 13px; font-weight: 600; }
+  .invite-option-warning { background: #FEF3E0; box-shadow: 0 0 0 1.5px #F4B400 inset; }
+  .settings-option-warning {
+    background: #F4B400; color: #FFFFFF; border-radius: 9999px; padding: 2px 9px; font-size: 12px;
+  }
 
   .tab-bar {
     display: flex; gap: 0; background: none; border-radius: 0;
@@ -821,7 +825,7 @@ function ManageCurrenciesModal({ pinned, onSave, onClose }) {
   );
 }
 
-function TripSettingsModal({ tripName, currency, symbol, onOpenCurrencyPicker, onOpenManageCurrencies, onExportExcel, onExportPDF, onSaveName, onClose }) {
+function TripSettingsModal({ tripName, currency, symbol, brokenRefsCount, onOpenCurrencyPicker, onOpenManageCurrencies, onExportExcel, onExportPDF, onSaveName, onOpenReconcile, onClose }) {
   const [nameInput, setNameInput] = useState(tripName || '');
   const nameChanged = nameInput.trim() !== (tripName || '');
 
@@ -852,6 +856,12 @@ function TripSettingsModal({ tripName, currency, symbol, onOpenCurrencyPicker, o
         </div>
 
         <div className="settings-option-list">
+          {brokenRefsCount > 0 && (
+            <button className="invite-option invite-option-warning" onClick={onOpenReconcile}>
+              <span>Fix expense links</span>
+              <span className="settings-option-value settings-option-warning">{brokenRefsCount}</span>
+            </button>
+          )}
           <button className="invite-option" onClick={onOpenCurrencyPicker}>
             <span>Group currency</span>
             <span className="settings-option-value">{symbol} {currency}</span>
@@ -963,6 +973,48 @@ function EditPersonModal({ person, onSave, onClose }) {
   );
 }
 
+function ReconcilePeopleModal({ brokenRefs, people, onResolve, onClose }) {
+  const [mapping, setMapping] = useState({});
+  const allMapped = brokenRefs.every((r) => mapping[r.value]);
+
+  return (
+    <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal-sheet">
+        <h3 className="display">Fix expense links</h3>
+        <p className="manage-currencies-hint">
+          These expenses reference someone who no longer matches anyone in your group — usually because they were renamed. Match each one to who it should be, and only the expenses you confirm will change.
+        </p>
+
+        {brokenRefs.map((ref) => (
+          <div className="field" key={ref.value}>
+            <span className="field-label">"{ref.value}" — {ref.count} expense{ref.count !== 1 ? 's' : ''}</span>
+            <select
+              value={mapping[ref.value] || ''}
+              onChange={(e) => setMapping((prev) => ({ ...prev, [ref.value]: e.target.value }))}
+              style={{
+                width: '100%', padding: '13px 14px', fontSize: 15, fontFamily: "'Outfit', sans-serif",
+                border: '1.5px solid var(--border)', borderRadius: 12, background: 'var(--surface-inner)', color: 'var(--text-main)',
+              }}
+            >
+              <option value="">Choose a person…</option>
+              {people.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          </div>
+        ))}
+
+        <div className="modal-actions">
+          <button className="btn btn-outline" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" disabled={!allMapped} onClick={() => onResolve(mapping)}>
+            Fix {brokenRefs.length} link{brokenRefs.length !== 1 ? 's' : ''}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ArchiveModal({ archivedExpenses, people, symbol, onRestore, onClose }) {
   const sorted = [...archivedExpenses].sort((a, b) => (b.archivedAt || 0) - (a.archivedAt || 0));
 
@@ -1066,13 +1118,15 @@ function App() {
     setActiveTab('summary');
   }, [tripCode]);
   const [showTripSettings, setShowTripSettings] = useState(false);
+  const [brokenRefs, setBrokenRefs] = useState([]);
+  const [showReconcile, setShowReconcile] = useState(false);
   const [tripHistory, setTripHistory] = useState(() => loadTripHistory());
   const [loading, setLoading] = useState(false);
   const [tripMeta, setTripMeta] = useState(null);
   const [expenseDocs, setExpenseDocs] = useState([]);
   const migratedRef = useRef(false);
   const migratedPeopleRef = useRef(false);
-  const repairedRef = useRef(false);
+  const brokenNoticeShownRef = useRef(false);
   // Derived, not stateful — every render recomputes this from the two real
   // Firestore-backed pieces above. Keeps the exact same shape the rest of
   // the app already expects (trip.people, trip.expenses, etc.), so none of
@@ -1257,47 +1311,58 @@ function App() {
     }
   };
 
-  // Self-healing repair: if the people migration above ever partially fails
-  // (e.g. the people doc updates but the expense-rewriting loop gets
-  // interrupted by a network hiccup), some expenses can be left pointing at
-  // an old name instead of a valid person ID — which renders as "Unknown"
-  // everywhere. Since the People list itself still has the correct names,
-  // this rebuilds a name→ID map from the CURRENT people list and quietly
-  // fixes any expense that's still referencing a name, on every load. It's
-  // idempotent: once nothing is broken, it finds nothing to fix and does
-  // nothing.
+  // Detects (but never silently auto-fixes) expenses whose paidBy/splitAmong
+  // don't match any current person ID — usually leftover from the earlier
+  // migration, especially once someone's been renamed since (a plain old
+  // name like "UK" no longer matches anyone once they're "Udipt", so it
+  // can't be auto-matched safely). Rather than guess, this surfaces what it
+  // found so the fix can happen in Group Settings, where the user confirms
+  // the mapping — money data shouldn't get silently rewritten on a guess.
   useEffect(() => {
-    if (!tripCode || !tripMeta || !Array.isArray(tripMeta.people) || repairedRef.current) return;
+    if (!tripCode || !tripMeta || !Array.isArray(tripMeta.people)) { setBrokenRefs([]); return; }
     if (tripMeta.people.length > 0 && typeof tripMeta.people[0] === 'string') return; // still mid-migration
-    if (expenseDocs.length === 0) return;
+    if (expenseDocs.length === 0) { setBrokenRefs([]); return; }
 
     const validIds = new Set(tripMeta.people.map((p) => p.id));
-    const nameToId = {};
-    tripMeta.people.forEach((p) => { nameToId[p.name] = p.id; });
-
-    const broken = expenseDocs.filter((exp) => {
-      const paidByBroken = exp.paidBy && !validIds.has(exp.paidBy) && nameToId[exp.paidBy] !== undefined;
-      const splitBroken = (exp.splitAmong || []).some((x) => !validIds.has(x) && nameToId[x] !== undefined);
-      return paidByBroken || splitBroken;
+    const counts = {};
+    expenseDocs.forEach((exp) => {
+      if (exp.paidBy && !validIds.has(exp.paidBy)) counts[exp.paidBy] = (counts[exp.paidBy] || 0) + 1;
+      (exp.splitAmong || []).forEach((x) => {
+        if (!validIds.has(x)) counts[x] = (counts[x] || 0) + 1;
+      });
     });
-    if (broken.length === 0) return;
+    const found = Object.entries(counts).map(([value, count]) => ({ value, count }));
+    setBrokenRefs(found);
+    if (found.length > 0 && !brokenNoticeShownRef.current) {
+      brokenNoticeShownRef.current = true;
+      showToast('Some expenses need to be relinked to people — check Group Settings');
+    }
+  }, [tripMeta, expenseDocs, tripCode]);
 
-    repairedRef.current = true;
-    (async () => {
-      if (!window.__firebase) return;
-      const { db, doc, updateDoc } = window.__firebase;
-      for (const exp of broken) {
-        const fixedPaidBy = nameToId[exp.paidBy] !== undefined ? nameToId[exp.paidBy] : exp.paidBy;
-        const fixedSplit = (exp.splitAmong || []).map((x) => (nameToId[x] !== undefined ? nameToId[x] : x));
+  const resolveBrokenRefs = async (mapping) => {
+    if (!window.__firebase || !tripCode) return;
+    const { db, doc, updateDoc } = window.__firebase;
+    let fixedCount = 0;
+    for (const exp of expenseDocs) {
+      let changed = false;
+      let paidBy = exp.paidBy;
+      if (mapping[paidBy]) { paidBy = mapping[paidBy]; changed = true; }
+      const splitAmong = (exp.splitAmong || []).map((x) => {
+        if (mapping[x]) { changed = true; return mapping[x]; }
+        return x;
+      });
+      if (changed) {
         try {
-          await updateDoc(doc(db, 'trips', tripCode, 'expenses', exp.id), { paidBy: fixedPaidBy, splitAmong: fixedSplit });
+          await updateDoc(doc(db, 'trips', tripCode, 'expenses', exp.id), { paidBy, splitAmong });
+          fixedCount++;
         } catch (e) {
-          repairedRef.current = false; // let it retry on next load if this failed
+          // Leave it — it'll show up in the next broken-refs scan to retry.
         }
       }
-      if (broken.length > 0) showToast(`Fixed ${broken.length} expense${broken.length !== 1 ? 's' : ''} that lost their link to people`);
-    })();
-  }, [tripMeta, expenseDocs, tripCode]);
+    }
+    setShowReconcile(false);
+    showToast(`Fixed ${fixedCount} expense${fixedCount !== 1 ? 's' : ''}`);
+  };
 
   const writeTripMeta = async (nextMeta) => {
     if (!window.__firebase || !tripCode) return;
@@ -1949,12 +2014,23 @@ function App() {
           tripName={trip.name}
           currency={currency}
           symbol={symbol}
+          brokenRefsCount={brokenRefs.length}
           onOpenCurrencyPicker={() => { setShowTripSettings(false); setShowHeaderCurrencyPicker(true); }}
           onOpenManageCurrencies={() => { setShowTripSettings(false); setShowManageCurrencies(true); }}
           onExportExcel={() => { exportExcel(); setShowTripSettings(false); }}
           onExportPDF={() => { exportPDF(); setShowTripSettings(false); }}
           onSaveName={(newName) => { mutateMeta(prev => ({ ...prev, name: newName || null })); showToast('Group name updated'); }}
+          onOpenReconcile={() => { setShowTripSettings(false); setShowReconcile(true); }}
           onClose={() => setShowTripSettings(false)}
+        />
+      )}
+
+      {showReconcile && (
+        <ReconcilePeopleModal
+          brokenRefs={brokenRefs}
+          people={people}
+          onResolve={resolveBrokenRefs}
+          onClose={() => setShowReconcile(false)}
         />
       )}
 
