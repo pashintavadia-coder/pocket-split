@@ -104,17 +104,20 @@
     position: relative; z-index: 2; text-align: left;
   }
   .switch-group-link {
-    display: inline-flex; align-items: center;
-    background: var(--surface-inner); border: none; border-radius: 20px;
-    padding: 6px 12px; box-shadow: var(--shadow-sm);
-    color: var(--google-blue); font-size: 12.5px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    height: 40px; box-sizing: border-box;
+    background: var(--surface-inner); border: 1px solid #E5E7EB; border-radius: 9999px;
+    padding: 0 14px; box-shadow: var(--shadow-sm);
+    color: var(--google-blue); font-size: 13px; font-weight: 600;
+    font-family: 'Outfit', sans-serif;
     text-decoration: none; cursor: pointer; flex-shrink: 0;
   }
-  .header-controls { display: flex; gap: 8px; flex-wrap: wrap; position: relative; z-index: 2; }
+  .header-controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; position: relative; z-index: 2; }
   .pill {
-    display: inline-flex; align-items: center; gap: 6px;
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    height: 40px; box-sizing: border-box;
     font-family: 'JetBrains Mono', monospace; font-size: 12.5px;
-    background: var(--surface-inner); border: none; padding: 6px 12px; border-radius: 20px;
+    background: var(--surface-inner); border: 1px solid #E5E7EB; padding: 0 14px; border-radius: 9999px;
     letter-spacing: 0.05em; color: var(--text-sub); box-shadow: var(--shadow-sm);
   }
   .pill strong { color: var(--text-main); }
@@ -212,7 +215,32 @@
     text-decoration: underline; cursor: pointer; padding: 0; margin-top: 8px;
   }
 
-  .people-row { display: flex; flex-wrap: wrap; gap: 9px; margin-bottom: 4px; }
+  .people-list { display: flex; flex-direction: column; margin-bottom: 4px; }
+  .person-row {
+    display: flex; justify-content: space-between; align-items: center; width: 100%;
+    margin-bottom: 12px; padding: 12px; background: #FFFFFF; border: 1px solid #F3F4F6;
+    border-radius: 12px; box-shadow: var(--shadow-sm);
+  }
+  .person-row-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .person-row-name {
+    font-weight: 700; color: #111827; font-size: 15px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .person-row-remove {
+    background: none; border: none; color: #9CA3AF; font-size: 16px; cursor: pointer;
+    width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;
+    border-radius: 9999px; flex-shrink: 0;
+  }
+  .person-row-remove:active { background: #F3F4F6; }
+  .person-row-confirm { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+  .person-row-confirm-yes {
+    background: var(--google-red); color: #fff; border: none; border-radius: 9999px;
+    padding: 7px 13px; font-size: 12.5px; font-weight: 700; cursor: pointer;
+  }
+  .person-row-confirm-no {
+    background: var(--surface-sunken); color: var(--text-sub); border: none; border-radius: 9999px;
+    padding: 7px 13px; font-size: 12.5px; font-weight: 700; cursor: pointer;
+  }
   .chip { display: inline-flex; align-items: center; gap: 7px; background: var(--surface-inner); border: none; border-radius: 20px; padding: 6px 10px 6px 8px; font-size: 13.5px; font-weight: 600; color: var(--text-main); box-shadow: var(--shadow-sm); }
   .chip .avatar { width: 22px; height: 22px; font-size: 10.5px; }
   .chip button { background: var(--surface-sunken); border: none; border-radius: 50%; width: 18px; height: 18px; line-height: 18px; text-align: center; color: var(--text-sub); cursor: pointer; padding: 0; font-size: 11px; }
@@ -294,7 +322,10 @@
 
   .manage-currencies-hint { font-size: 13px; color: var(--text-sub); line-height: 1.5; margin: 0 0 16px; }
 
-  .invite-pill { background: var(--google-blue); border-color: var(--google-blue); color: #FFFFFF; font-weight: 700; }
+  .invite-pill {
+    background: var(--google-blue); border: 1px solid var(--google-blue); color: #FFFFFF;
+    font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 14px; letter-spacing: normal;
+  }
   .invite-option-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
   .settings-option-list { display: flex; flex-direction: column; gap: 8px; margin: 14px 0; }
 
@@ -351,9 +382,10 @@
   .tab-btn.active { background: none; color: var(--google-blue); box-shadow: none; border-bottom-color: var(--google-blue); }
 
   .settings-gear-btn {
-    background: var(--surface-inner); border: none; border-radius: 9999px;
-    width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center;
-    cursor: pointer; box-shadow: var(--shadow-sm); font-size: 17px; flex-shrink: 0;
+    background: var(--surface-inner); border: 1px solid #E5E7EB; border-radius: 9999px;
+    width: 40px; height: 40px; box-sizing: border-box;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; box-shadow: var(--shadow-sm); font-size: 16px; flex-shrink: 0;
   }
 
   .invite-option {
@@ -1875,25 +1907,27 @@ function App() {
         {activeTab === 'people' && (
           <>
             <div className="section-title">People <span className="count">{people.length}</span></div>
-            <div className="people-row">
+            <div className="people-list">
               {people.map(p => (
-                <div className="chip" key={p}>
-                  <div
-                    className="avatar"
-                    style={{background: softColorForPerson(p, people), cursor: 'pointer'}}
-                    onClick={() => setShowEmojiPickerFor(p)}
-                    title="Tap to change avatar"
-                  >
-                    {avatarFor(p, trip.personEmojis)}
+                <div className="person-row" key={p}>
+                  <div className="person-row-left">
+                    <div
+                      className="avatar"
+                      style={{background: softColorForPerson(p, people), cursor: 'pointer'}}
+                      onClick={() => setShowEmojiPickerFor(p)}
+                      title="Tap to change avatar"
+                    >
+                      {avatarFor(p, trip.personEmojis)}
+                    </div>
+                    <span className="person-row-name">{p}</span>
                   </div>
-                  {p}
                   {confirmDeletePerson === p ? (
-                    <>
-                      <button className="confirm-yes" onClick={() => requestRemovePerson(p)} title="Confirm remove">✓</button>
-                      <button onClick={() => setConfirmDeletePerson(null)} title="Cancel">×</button>
-                    </>
+                    <div className="person-row-confirm">
+                      <button className="person-row-confirm-yes" onClick={() => requestRemovePerson(p)}>Confirm</button>
+                      <button className="person-row-confirm-no" onClick={() => setConfirmDeletePerson(null)}>Cancel</button>
+                    </div>
                   ) : (
-                    <button onClick={() => requestRemovePerson(p)} title="Remove">×</button>
+                    <button className="person-row-remove" onClick={() => requestRemovePerson(p)} title="Remove">✕</button>
                   )}
                 </div>
               ))}
