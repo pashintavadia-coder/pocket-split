@@ -79,9 +79,9 @@
   @media (prefers-reduced-motion: reduce) { .fan-card { animation: none !important; } }
 
   .header { padding: 22px 20px 18px; position: relative; }
-  .logo-row { display: flex; align-items: center; gap: 10px; }
+  .logo-row { display: flex; align-items: center; gap: 8px; }
   .logo-row-top { justify-content: space-between; width: 100%; }
-  .logo-row-brand { display: flex; align-items: center; gap: 10px; }
+  .logo-row-brand { display: flex; align-items: center; gap: 8px; }
   .fan-stack { position: relative; width: 40px; height: 34px; flex-shrink: 0; }
   .fan-card {
     position: absolute; width: 18px; height: 24px; border-radius: 5px; top: 3px; left: 11px;
@@ -96,7 +96,7 @@
     color: rgba(255,255,255,0.6); font-weight: 800; font-size: 11px; font-family: 'Outfit', sans-serif;
   }
   .brand-name {
-    font-family: 'Outfit', sans-serif; font-weight: 700; font-size: 20px;
+    font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 24px;
     color: var(--text-main); letter-spacing: -0.01em; white-space: nowrap;
   }
 
@@ -106,13 +106,14 @@
     position: relative; z-index: 2; text-align: left;
   }
   .switch-group-link {
-    background: none; border: none; box-shadow: none; padding: 0;
-    color: #6B7280; font-size: 14px; font-weight: 600;
+    background: #F3F4F6; border: none; box-shadow: none;
+    padding: 6px 16px; border-radius: 9999px;
+    color: #4B5563; font-size: 14px; font-weight: 600;
     font-family: 'Outfit', sans-serif;
     text-decoration: none; cursor: pointer; flex-shrink: 0;
-    transition: color 0.15s ease;
+    transition: background-color 0.15s ease, color 0.15s ease;
   }
-  .switch-group-link:hover, .switch-group-link:active { color: #1F2937; }
+  .switch-group-link:hover, .switch-group-link:active { background: #E5E7EB; color: #1F2937; }
   .header-controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; position: relative; z-index: 2; }
   .pill {
     display: flex; align-items: center; justify-content: center; gap: 6px;
@@ -414,6 +415,21 @@
     background: var(--google-blue-tint); border: 1.5px dashed var(--google-blue-tint-border); color: var(--google-blue-dark);
     border-radius: 9999px; padding: 7px 16px; font-size: 13px; font-weight: 700; cursor: pointer;
   }
+  .create-group-form { display: flex; flex-direction: column; gap: 16px; margin-bottom: 16px; }
+  .create-group-form .field { margin-bottom: 0; }
+  .add-foreign-currency-btn {
+    font-size: 14px; font-weight: 700; color: var(--google-blue);
+    background: var(--google-blue-tint); border: none; border-radius: 9999px;
+    padding: 8px 16px; cursor: pointer; font-family: 'Outfit', sans-serif;
+  }
+
+  .base-currency-btn {
+    width: 100%; display: flex; align-items: center; text-align: left;
+    font-family: 'Outfit', sans-serif; font-size: 15px; font-weight: 600; padding: 13px 14px;
+    border: 1.5px solid var(--border); border-radius: 12px; background: var(--surface-inner); color: var(--text-main);
+    cursor: pointer;
+  }
+  .base-currency-btn:focus { border-color: var(--google-blue); box-shadow: 0 0 0 3px var(--google-blue-tint); outline: none; }
 
   .currency-select-btn {
     display: inline-flex; align-items: center; gap: 6px;
@@ -1103,7 +1119,9 @@ function App() {
   });
   const [codeInput, setCodeInput] = useState('');
   const [newTripName, setNewTripName] = useState('');
-  const [newTripCurrencies, setNewTripCurrencies] = useState([]);
+  const [newTripBaseCurrency, setNewTripBaseCurrency] = useState('USD');
+  const [newTripForeignCurrencies, setNewTripForeignCurrencies] = useState([]);
+  const [showBaseCurrencyPicker, setShowBaseCurrencyPicker] = useState(false);
   const [showNewTripCurrencyPicker, setShowNewTripCurrencyPicker] = useState(false);
   const [showHeaderCurrencyPicker, setShowHeaderCurrencyPicker] = useState(false);
   const [showManageCurrencies, setShowManageCurrencies] = useState(false);
@@ -1410,13 +1428,14 @@ function App() {
     ).join('');
     const { db, doc, setDoc } = window.__firebase;
     const name = newTripName.trim() || null;
-    const pinnedCurrencies = [...newTripCurrencies];
-    const startingCurrency = pinnedCurrencies[0] || 'USD';
+    const startingCurrency = newTripBaseCurrency || 'USD';
+    const pinnedCurrencies = [startingCurrency, ...newTripForeignCurrencies.filter((c) => c !== startingCurrency)].slice(0, 5);
     await setDoc(doc(db, 'trips', code), { ...EMPTY_TRIP, name, currency: startingCurrency, pinnedCurrencies });
     rememberTrip(code);
     upsertHistory({ code, name, currency: startingCurrency, lastVisited: Date.now() });
     setNewTripName('');
-    setNewTripCurrencies([]);
+    setNewTripBaseCurrency('USD');
+    setNewTripForeignCurrencies([]);
     setTripCode(code);
   };
 
@@ -1631,36 +1650,44 @@ function App() {
         </div>
         <h2 className="display">Split it, don't sweat it</h2>
         <p>No logins. No complicated math. Create a group in seconds and share the code to track expenses live.</p>
-        <div className="field">
-          <span className="field-label">Name this group (optional)</span>
-          <input
-            type="text" placeholder="e.g. Goa 2026" value={newTripName}
-            onChange={(e) => setNewTripName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && createTrip()}
-          />
-        </div>
-        <div className="field">
-          <span className="field-label">Currencies you'll use (optional, up to 5)</span>
-          <div className="pinned-chip-row">
-            {newTripCurrencies.map((code) => (
-              <div className="chip" key={code}>
-                <span>{code}</span>
-                <button onClick={() => setNewTripCurrencies((prev) => prev.filter((c) => c !== code))}>×</button>
+        <div className="create-group-form">
+          <div className="field">
+            <span className="field-label">Name this group (optional)</span>
+            <input
+              type="text" placeholder="e.g. Goa 2026" value={newTripName}
+              onChange={(e) => setNewTripName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && createTrip()}
+            />
+          </div>
+          <div className="field">
+            <span className="field-label">Base currency</span>
+            <button
+              type="button"
+              className="base-currency-btn"
+              onClick={() => setShowBaseCurrencyPicker(true)}
+            >
+              {symbolFor(newTripBaseCurrency)} {newTripBaseCurrency}
+            </button>
+          </div>
+          <div className="field">
+            <button className="add-foreign-currency-btn" onClick={() => setShowNewTripCurrencyPicker(true)}>
+              + Add Foreign Currencies (for travel)
+            </button>
+            {newTripForeignCurrencies.length > 0 && (
+              <div className="pinned-chip-row" style={{marginTop: 10}}>
+                {newTripForeignCurrencies.map((code) => (
+                  <div className="chip" key={code}>
+                    <span>{code}</span>
+                    <button onClick={() => setNewTripForeignCurrencies((prev) => prev.filter((c) => c !== code))}>×</button>
+                  </div>
+                ))}
               </div>
-            ))}
-            {newTripCurrencies.length < 5 && (
-              <button className="add-currency-btn" onClick={() => setShowNewTripCurrencyPicker(true)}>+ Add</button>
             )}
           </div>
-          {newTripCurrencies.length > 0 && (
-            <div style={{ fontSize: 11.5, color: 'var(--text-faint)', marginTop: 8 }}>
-              First one picked ({newTripCurrencies[0]}) becomes the group's main currency — you can change this anytime.
-            </div>
-          )}
+          <button className="btn btn-primary" onClick={createTrip} disabled={loading}>
+            Start a New Group
+          </button>
         </div>
-        <button className="btn btn-primary" onClick={createTrip} disabled={loading}>
-          Start a New Group
-        </button>
         <div className="or-divider">or join with a code</div>
         <div className="field">
           <input
@@ -1699,15 +1726,27 @@ function App() {
         )}
       </div>
 
+      {showBaseCurrencyPicker && (
+        <CurrencyPickerModal
+          title="Base currency"
+          onSelect={(code) => {
+            setNewTripBaseCurrency(code);
+            setNewTripForeignCurrencies((prev) => prev.filter((c) => c !== code));
+            setShowBaseCurrencyPicker(false);
+          }}
+          onClose={() => setShowBaseCurrencyPicker(false)}
+        />
+      )}
+
       {showNewTripCurrencyPicker && (
         <CurrencyPickerModal
-          excludeCodes={newTripCurrencies}
-          existingCount={newTripCurrencies.length}
+          excludeCodes={[newTripBaseCurrency, ...newTripForeignCurrencies]}
+          existingCount={1 + newTripForeignCurrencies.length}
           maxSelect={5}
           multiSelect
-          title="Add currencies"
+          title="Add foreign currencies"
           onSelectMultiple={(codes) => {
-            setNewTripCurrencies((prev) => [...prev, ...codes].slice(0, 5));
+            setNewTripForeignCurrencies((prev) => [...prev, ...codes].slice(0, 4));
             setShowNewTripCurrencyPicker(false);
           }}
           onClose={() => setShowNewTripCurrencyPicker(false)}
