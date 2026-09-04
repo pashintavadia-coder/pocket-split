@@ -1065,6 +1065,7 @@ function App() {
   const [expenseDocs, setExpenseDocs] = useState([]);
   const migratedRef = useRef(false);
   const migratedPeopleRef = useRef(false);
+  const repairedRef = useRef(false);
   // Derived, not stateful — every render recomputes this from the two real
   // Firestore-backed pieces above. Keeps the exact same shape the rest of
   // the app already expects (trip.people, trip.expenses, etc.), so none of
@@ -1248,6 +1249,48 @@ function App() {
       // Non-fatal — retries next time the trip loads.
     }
   };
+
+  // Self-healing repair: if the people migration above ever partially fails
+  // (e.g. the people doc updates but the expense-rewriting loop gets
+  // interrupted by a network hiccup), some expenses can be left pointing at
+  // an old name instead of a valid person ID — which renders as "Unknown"
+  // everywhere. Since the People list itself still has the correct names,
+  // this rebuilds a name→ID map from the CURRENT people list and quietly
+  // fixes any expense that's still referencing a name, on every load. It's
+  // idempotent: once nothing is broken, it finds nothing to fix and does
+  // nothing.
+  useEffect(() => {
+    if (!tripCode || !tripMeta || !Array.isArray(tripMeta.people) || repairedRef.current) return;
+    if (tripMeta.people.length > 0 && typeof tripMeta.people[0] === 'string') return; // still mid-migration
+    if (expenseDocs.length === 0) return;
+
+    const validIds = new Set(tripMeta.people.map((p) => p.id));
+    const nameToId = {};
+    tripMeta.people.forEach((p) => { nameToId[p.name] = p.id; });
+
+    const broken = expenseDocs.filter((exp) => {
+      const paidByBroken = exp.paidBy && !validIds.has(exp.paidBy) && nameToId[exp.paidBy] !== undefined;
+      const splitBroken = (exp.splitAmong || []).some((x) => !validIds.has(x) && nameToId[x] !== undefined);
+      return paidByBroken || splitBroken;
+    });
+    if (broken.length === 0) return;
+
+    repairedRef.current = true;
+    (async () => {
+      if (!window.__firebase) return;
+      const { db, doc, updateDoc } = window.__firebase;
+      for (const exp of broken) {
+        const fixedPaidBy = nameToId[exp.paidBy] !== undefined ? nameToId[exp.paidBy] : exp.paidBy;
+        const fixedSplit = (exp.splitAmong || []).map((x) => (nameToId[x] !== undefined ? nameToId[x] : x));
+        try {
+          await updateDoc(doc(db, 'trips', tripCode, 'expenses', exp.id), { paidBy: fixedPaidBy, splitAmong: fixedSplit });
+        } catch (e) {
+          repairedRef.current = false; // let it retry on next load if this failed
+        }
+      }
+      if (broken.length > 0) showToast(`Fixed ${broken.length} expense${broken.length !== 1 ? 's' : ''} that lost their link to people`);
+    })();
+  }, [tripMeta, expenseDocs, tripCode]);
 
   const writeTripMeta = async (nextMeta) => {
     if (!window.__firebase || !tripCode) return;
