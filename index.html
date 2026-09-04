@@ -220,7 +220,9 @@
     display: flex; justify-content: space-between; align-items: center; width: 100%;
     margin-bottom: 12px; padding: 12px; background: #FFFFFF; border: 1px solid #F3F4F6;
     border-radius: 12px; box-shadow: var(--shadow-sm);
+    font-family: 'Outfit', sans-serif; cursor: pointer; text-align: left;
   }
+  .person-row:active { background: #FAFAFA; }
   .person-row-left { display: flex; align-items: center; gap: 12px; min-width: 0; }
   .person-row-name {
     font-weight: 700; color: #111827; font-size: 15px;
@@ -335,6 +337,7 @@
     padding: 12px 0; cursor: pointer; line-height: 1;
   }
   .emoji-option:active { background: var(--google-blue-tint); }
+  .emoji-option.selected { background: var(--google-blue-tint); box-shadow: 0 0 0 2px var(--google-blue) inset; }
 
   /* Total spent + donut chart, side by side */
   .total-spend-flex { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
@@ -443,7 +446,7 @@
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-app.js";
   import {
     initializeFirestore, persistentLocalCache, persistentSingleTabManager,
-    doc, setDoc, getDoc, onSnapshot, collection, updateDoc, arrayUnion, arrayRemove, deleteField
+    doc, setDoc, getDoc, getDocs, onSnapshot, collection, updateDoc, arrayUnion, arrayRemove, deleteField
   } from "https://www.gstatic.com/firebasejs/10.13.1/firebase-firestore.js";
 
   const firebaseConfig = {
@@ -468,7 +471,7 @@
     const db = initializeFirestore(app, {
       localCache: persistentLocalCache({ tabManager: persistentSingleTabManager({}) }),
     });
-    window.__firebase = { db, doc, setDoc, getDoc, onSnapshot, collection, updateDoc, arrayUnion, arrayRemove, deleteField };
+    window.__firebase = { db, doc, setDoc, getDoc, getDocs, onSnapshot, collection, updateDoc, arrayUnion, arrayRemove, deleteField };
   }
   window.__firebaseReady = true;
 </script>
@@ -622,18 +625,24 @@ function setLastUsedCurrency(tripCode, code) {
 }
 
 const PERSON_COLORS = ['--p1', '--p2', '--p3', '--p4', '--p5', '--p6', '--p7', '--p8'];
-function colorForPerson(name, people) {
-  const idx = people.indexOf(name);
-  return `var(${PERSON_COLORS[idx % PERSON_COLORS.length]})`;
+function colorForPerson(id, people) {
+  const idx = people.findIndex((p) => p.id === id);
+  return `var(${PERSON_COLORS[(idx < 0 ? 0 : idx) % PERSON_COLORS.length]})`;
 }
-function softColorForPerson(name, people) {
-  return `color-mix(in srgb, ${colorForPerson(name, people)} 22%, white)`;
+function softColorForPerson(id, people) {
+  return `color-mix(in srgb, ${colorForPerson(id, people)} 22%, white)`;
 }
-function initials(name) { return name.trim().slice(0, 2).toUpperCase(); }
+function initials(name) { return (name || '?').trim().slice(0, 2).toUpperCase(); }
 
 const EMOJI_LIST = ['🦊', '🦁', '👻', '🍕', '🚀', '🐸', '🐼', '🦄', '🌵', '🍩', '🎈', '🐙'];
-function avatarFor(name, personEmojis) {
-  return (personEmojis && personEmojis[name]) || initials(name);
+function avatarFor(person) {
+  if (!person) return '?';
+  return person.avatar || initials(person.name);
+}
+function personById(id, people) { return (people || []).find((p) => p.id === id) || null; }
+function personNameById(id, people) {
+  const p = personById(id, people);
+  return p ? p.name : 'Unknown';
 }
 function symbolFor(code) { return CURRENCY_MAP[code] ? CURRENCY_MAP[code].symbol : '$'; }
 function nameFor(code) { return CURRENCY_MAP[code] ? CURRENCY_MAP[code].name : code; }
@@ -811,7 +820,10 @@ function ManageCurrenciesModal({ pinned, onSave, onClose }) {
   );
 }
 
-function TripSettingsModal({ tripName, currency, symbol, onOpenCurrencyPicker, onOpenManageCurrencies, onExportExcel, onExportPDF, onClose }) {
+function TripSettingsModal({ tripName, currency, symbol, onOpenCurrencyPicker, onOpenManageCurrencies, onExportExcel, onExportPDF, onSaveName, onClose }) {
+  const [nameInput, setNameInput] = useState(tripName || '');
+  const nameChanged = nameInput.trim() !== (tripName || '');
+
   return (
     <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal-sheet">
@@ -819,6 +831,24 @@ function TripSettingsModal({ tripName, currency, symbol, onOpenCurrencyPicker, o
         <p className="manage-currencies-hint">
           {tripName ? `Settings for "${tripName}" — these apply for everyone in the group.` : 'These settings apply for everyone in the group.'}
         </p>
+
+        <div className="field">
+          <span className="field-label">Group name</span>
+          <div style={{display: 'flex', gap: 8}}>
+            <input
+              type="text" value={nameInput} placeholder="e.g. Goa 2026" style={{flex: 1}}
+              onChange={(e) => setNameInput(e.target.value)}
+            />
+            <button
+              className="btn btn-outline"
+              style={{width: 'auto', padding: '0 18px', flexShrink: 0}}
+              disabled={!nameChanged}
+              onClick={() => onSaveName(nameInput.trim())}
+            >
+              Save
+            </button>
+          </div>
+        </div>
 
         <div className="settings-option-list">
           <button className="invite-option" onClick={onOpenCurrencyPicker}>
@@ -887,26 +917,52 @@ function InviteFallbackModal({ url, text, showToast, onClose }) {
   );
 }
 
-function EmojiPickerModal({ personName, onSelect, onClose }) {
+function EditPersonModal({ person, onSave, onClose }) {
+  const [name, setName] = useState(person.name);
+  const [avatar, setAvatar] = useState(person.avatar);
+  const canSave = name.trim().length > 0;
+
   return (
     <div className="modal-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal-sheet">
-        <h3 className="display">Choose an avatar</h3>
-        <p className="manage-currencies-hint" style={{marginTop: -8}}>For {personName}</p>
-        <div className="emoji-grid">
-          {EMOJI_LIST.map((e) => (
-            <button key={e} className="emoji-option" onClick={() => onSelect(e)}>{e}</button>
-          ))}
+        <h3 className="display">Edit person</h3>
+
+        <div className="field">
+          <span className="field-label">Name</span>
+          <input
+            type="text" value={name} autoFocus
+            onChange={(e) => setName(e.target.value)}
+          />
         </div>
+
+        <div className="field">
+          <span className="field-label">Avatar</span>
+          <div className="emoji-grid">
+            {EMOJI_LIST.map((e) => (
+              <button
+                key={e}
+                className={'emoji-option' + (avatar === e ? ' selected' : '')}
+                onClick={() => setAvatar(avatar === e ? null : e)}
+              >
+                {e}
+              </button>
+            ))}
+          </div>
+          <div style={{fontSize: 12, color: 'var(--text-faint)', marginTop: 8}}>
+            Tap an emoji again to remove it and go back to initials.
+          </div>
+        </div>
+
         <div className="modal-actions">
           <button className="btn btn-outline" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" disabled={!canSave} onClick={() => onSave(name.trim(), avatar)}>Save</button>
         </div>
       </div>
     </div>
   );
 }
 
-function ArchiveModal({ archivedExpenses, symbol, onRestore, onClose }) {
+function ArchiveModal({ archivedExpenses, people, symbol, onRestore, onClose }) {
   const sorted = [...archivedExpenses].sort((a, b) => (b.archivedAt || 0) - (a.archivedAt || 0));
 
   return (
@@ -926,7 +982,7 @@ function ArchiveModal({ archivedExpenses, symbol, onRestore, onClose }) {
                 <span className="archived-amt">{fmt(exp.amount, symbol)}</span>
               </div>
               <div className="archived-meta">
-                Paid by {exp.paidBy} · split {exp.splitAmong.length} way{exp.splitAmong.length !== 1 ? 's' : ''} · archived {exp.archivedAt ? new Date(exp.archivedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''}
+                Paid by {personNameById(exp.paidBy, people)} · split {exp.splitAmong.length} way{exp.splitAmong.length !== 1 ? 's' : ''} · archived {exp.archivedAt ? new Date(exp.archivedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : ''}
               </div>
               <button className="restore-btn" onClick={() => onRestore(exp.id)}>Restore</button>
             </div>
@@ -951,7 +1007,11 @@ function FanStack() {
   );
 }
 
-const EMPTY_TRIP = { people: [], currency: 'USD', name: null, pinnedCurrencies: [], personEmojis: {} };
+function newPersonId() {
+  return 'p_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+}
+
+const EMPTY_TRIP = { people: [], currency: 'USD', name: null, pinnedCurrencies: [] };
 const STORAGE_KEY = 'pocketSplitTripCode';
 const HISTORY_KEY = 'pocketSplitTripHistory';
 const HISTORY_LIMIT = 20;
@@ -995,7 +1055,7 @@ function App() {
   const [showHeaderCurrencyPicker, setShowHeaderCurrencyPicker] = useState(false);
   const [showManageCurrencies, setShowManageCurrencies] = useState(false);
   const [showArchive, setShowArchive] = useState(false);
-  const [showEmojiPickerFor, setShowEmojiPickerFor] = useState(null);
+  const [editingPerson, setEditingPerson] = useState(null);
   const [showInviteFallback, setShowInviteFallback] = useState(false);
   const [activeTab, setActiveTab] = useState('summary');
   const [showTripSettings, setShowTripSettings] = useState(false);
@@ -1004,6 +1064,7 @@ function App() {
   const [tripMeta, setTripMeta] = useState(null);
   const [expenseDocs, setExpenseDocs] = useState([]);
   const migratedRef = useRef(false);
+  const migratedPeopleRef = useRef(false);
   // Derived, not stateful — every render recomputes this from the two real
   // Firestore-backed pieces above. Keeps the exact same shape the rest of
   // the app already expects (trip.people, trip.expenses, etc.), so none of
@@ -1077,25 +1138,34 @@ function App() {
     const { db, doc, onSnapshot, collection } = window.__firebase;
     setLoading(true);
     migratedRef.current = false;
+    migratedPeopleRef.current = false;
 
     let metaLoaded = false;
     let expensesLoaded = false;
     const checkDoneLoading = () => { if (metaLoaded && expensesLoaded) setLoading(false); };
 
-    // Listener 1: trip metadata (name, currency, pinnedCurrencies, people, personEmojis)
-    const unsubMeta = onSnapshot(doc(db, 'trips', tripCode), (snap) => {
+    // Listener 1: trip metadata (name, currency, pinnedCurrencies, people)
+    const unsubMeta = onSnapshot(doc(db, 'trips', tripCode), async (snap) => {
       if (snap.exists()) {
         const data = snap.data();
         if (!data.currency) data.currency = 'USD';
         setTripMeta(data);
         upsertHistory({ code: tripCode, name: data.name || null, currency: data.currency, lastVisited: Date.now() });
 
-        // One-time lazy migration for trips created before this refactor —
-        // their expenses/archivedExpenses still live as arrays on this doc.
+        // One-time lazy migrations for trips created before recent
+        // refactors. Order matters: expenses need to be in the
+        // subcollection before the people migration can rewrite their
+        // paidBy/splitAmong references.
         const hasLegacyExpenses = (data.expenses && data.expenses.length > 0) || (data.archivedExpenses && data.archivedExpenses.length > 0);
         if (hasLegacyExpenses && !migratedRef.current) {
           migratedRef.current = true;
-          migrateLegacyExpenses(tripCode, data);
+          await migrateLegacyExpenses(tripCode, data);
+        }
+
+        const hasLegacyPeople = Array.isArray(data.people) && data.people.length > 0 && typeof data.people[0] === 'string';
+        if (hasLegacyPeople && !migratedPeopleRef.current) {
+          migratedPeopleRef.current = true;
+          await migrateLegacyPeopleToIds(tripCode, data);
         }
       } else {
         // A remembered code that no longer points to a real trip (deleted,
@@ -1146,6 +1216,36 @@ function App() {
     } catch (e) {
       // Non-fatal — if this fails (e.g. offline), the legacy fields stay
       // put and migration will just retry next time the trip loads.
+    }
+  };
+
+  // Converts people from plain name strings into { id, name, avatar }
+  // objects, and rewrites every expense document's paidBy/splitAmong from
+  // names to the newly-generated IDs — so nothing silently breaks (or
+  // silently mis-attributes an expense) for trips created before this
+  // refactor.
+  const migrateLegacyPeopleToIds = async (code, data) => {
+    if (!window.__firebase) return;
+    const { db, doc, setDoc, updateDoc, getDocs, collection, deleteField } = window.__firebase;
+    const legacyEmojis = data.personEmojis || {};
+    const nameToId = {};
+    const newPeople = data.people.map((name) => {
+      const id = newPersonId();
+      nameToId[name] = id;
+      return { id, name, avatar: legacyEmojis[name] || null };
+    });
+    try {
+      await setDoc(doc(db, 'trips', code), { people: newPeople, personEmojis: deleteField() }, { merge: true });
+
+      const expensesSnap = await getDocs(collection(db, 'trips', code, 'expenses'));
+      for (const expDoc of expensesSnap.docs) {
+        const exp = expDoc.data();
+        const newPaidBy = nameToId[exp.paidBy] !== undefined ? nameToId[exp.paidBy] : exp.paidBy;
+        const newSplitAmong = (exp.splitAmong || []).map((n) => (nameToId[n] !== undefined ? nameToId[n] : n));
+        await updateDoc(doc(db, 'trips', code, 'expenses', expDoc.id), { paidBy: newPaidBy, splitAmong: newSplitAmong });
+      }
+    } catch (e) {
+      // Non-fatal — retries next time the trip loads.
     }
   };
 
@@ -1255,62 +1355,73 @@ function App() {
   const addPerson = async () => {
     const name = newPersonName.trim();
     if (!name) return;
-    if (trip.people.some(p => p.toLowerCase() === name.toLowerCase())) {
+    if (trip.people.some(p => p.name.toLowerCase() === name.toLowerCase())) {
       showToast('Already on the list'); return;
     }
-    setTripMeta(prev => prev ? { ...prev, people: [...prev.people, name] } : prev); // optimistic
+    const newPerson = { id: newPersonId(), name, avatar: null };
+    setTripMeta(prev => prev ? { ...prev, people: [...prev.people, newPerson] } : prev); // optimistic
     setNewPersonName('');
     if (!window.__firebase || !tripCode) return;
     const { db, doc, updateDoc, arrayUnion } = window.__firebase;
     try {
-      // arrayUnion is an atomic server-side operation — two people adding
-      // different names offline at the same time will both land correctly
-      // instead of one overwriting the other.
-      await updateDoc(doc(db, 'trips', tripCode), { people: arrayUnion(name) });
+      // arrayUnion is safe here since newPerson's id is always unique — it
+      // can never de-dupe against an existing entry, so this behaves like a
+      // plain atomic append even with object values.
+      await updateDoc(doc(db, 'trips', tripCode), { people: arrayUnion(newPerson) });
     } catch (e) {
       showToast("Couldn't save — check your connection");
     }
   };
 
-  const setPersonEmoji = async (name, emoji) => {
-    setTripMeta(prev => prev ? { ...prev, personEmojis: { ...(prev.personEmojis || {}), [name]: emoji } } : prev); // optimistic
+  // Renaming or changing someone's avatar means replacing one specific
+  // object inside the people array — Firestore has no way to do that
+  // surgically (arrayUnion/arrayRemove only work by whole-value matching),
+  // so this reads the current array and writes the whole thing back. Less
+  // exotic than the atomic ops above, but correct, and edits to existing
+  // people are rare compared to expenses, so the tradeoff is fine.
+  const editPerson = async (id, updates) => {
+    if (!tripMeta) return;
+    const nextPeople = tripMeta.people.map(p => (p.id === id ? { ...p, ...updates } : p));
+    setTripMeta({ ...tripMeta, people: nextPeople }); // optimistic
     if (!window.__firebase || !tripCode) return;
     const { db, doc, setDoc } = window.__firebase;
     try {
-      // setDoc with merge:true deep-merges nested map fields, so this only
-      // touches this one person's emoji key, not everyone else's.
-      await setDoc(doc(db, 'trips', tripCode), { personEmojis: { [name]: emoji } }, { merge: true });
+      await setDoc(doc(db, 'trips', tripCode), { people: nextPeople }, { merge: true });
     } catch (e) {
       showToast("Couldn't save — check your connection");
     }
   };
 
-  const removePerson = async (name) => {
-    setTripMeta(prev => prev ? { ...prev, people: prev.people.filter(p => p !== name) } : prev); // optimistic
+  const removePerson = async (id) => {
+    const person = personById(id, tripMeta ? tripMeta.people : []);
+    const nextPeople = tripMeta ? tripMeta.people.filter(p => p.id !== id) : [];
+    setTripMeta(prev => prev ? { ...prev, people: nextPeople } : prev); // optimistic
     setConfirmDeletePerson(null);
-    showToast(`${name} removed`);
+    showToast(`${person ? person.name : 'Person'} removed`);
     if (!window.__firebase || !tripCode) return;
-    const { db, doc, updateDoc, arrayRemove } = window.__firebase;
+    const { db, doc, setDoc } = window.__firebase;
     try {
-      await updateDoc(doc(db, 'trips', tripCode), { people: arrayRemove(name) });
+      await setDoc(doc(db, 'trips', tripCode), { people: nextPeople }, { merge: true });
     } catch (e) {
       showToast("Couldn't save — check your connection");
     }
   };
 
-  const isPersonInActiveExpenses = (name) => {
-    return trip.expenses.some((exp) => exp.paidBy === name || exp.splitAmong.includes(name));
+  const isPersonInActiveExpenses = (id) => {
+    return trip.expenses.some((exp) => exp.paidBy === id || exp.splitAmong.includes(id));
   };
 
-  const requestRemovePerson = (name) => {
-    if (isPersonInActiveExpenses(name)) {
+  const requestRemovePerson = (id) => {
+    const person = personById(id, trip.people);
+    const name = person ? person.name : 'this person';
+    if (isPersonInActiveExpenses(id)) {
       showToast(`Cannot remove ${name} because they are part of active expenses.`);
       return;
     }
-    if (confirmDeletePerson === name) {
-      removePerson(name);
+    if (confirmDeletePerson === id) {
+      removePerson(id);
     } else {
-      setConfirmDeletePerson(name);
+      setConfirmDeletePerson(id);
       setConfirmDeleteExpenseId(null);
     }
   };
@@ -1515,26 +1626,26 @@ function App() {
   };
 
   const balances = {};
-  people.forEach(p => balances[p] = 0);
+  people.forEach(p => balances[p.id] = 0);
   expenses.forEach(exp => {
     const share = exp.amount / exp.splitAmong.length;
     if (balances[exp.paidBy] === undefined) balances[exp.paidBy] = 0;
     balances[exp.paidBy] += exp.amount;
-    exp.splitAmong.forEach(p => {
-      if (balances[p] === undefined) balances[p] = 0;
-      balances[p] -= share;
+    exp.splitAmong.forEach(id => {
+      if (balances[id] === undefined) balances[id] = 0;
+      balances[id] -= share;
     });
   });
 
   const settlements = simplifySettlements(balances);
-  const sortedPeople = [...people].sort((a, b) => (balances[b] || 0) - (balances[a] || 0));
+  const sortedPeople = [...people].sort((a, b) => (balances[b.id] || 0) - (balances[a.id] || 0));
   const totalSpent = expenses.reduce((sum, e) => sum + e.amount, 0);
 
   const paidTotals = {};
-  people.forEach(p => paidTotals[p] = 0);
+  people.forEach(p => paidTotals[p.id] = 0);
   expenses.forEach(exp => { paidTotals[exp.paidBy] = (paidTotals[exp.paidBy] || 0) + exp.amount; });
-  const maxPaid = Math.max(1, ...people.map(p => paidTotals[p] || 0));
-  const chartPeople = [...people].sort((a, b) => (paidTotals[b] || 0) - (paidTotals[a] || 0));
+  const maxPaid = Math.max(1, ...people.map(p => paidTotals[p.id] || 0));
+  const chartPeople = [...people].sort((a, b) => (paidTotals[b.id] || 0) - (paidTotals[a.id] || 0));
 
   // Donut chart: a conic-gradient slice per person, sized by their share of
   // total spend, colored with their assigned (vivid) avatar color.
@@ -1542,11 +1653,11 @@ function App() {
   if (totalSpent > 0 && chartPeople.length > 0) {
     let cursor = 0;
     const slices = chartPeople.map((p) => {
-      const amt = paidTotals[p] || 0;
+      const amt = paidTotals[p.id] || 0;
       const pct = (amt / totalSpent) * 100;
       const start = cursor;
       cursor += pct;
-      return `${colorForPerson(p, people)} ${start}% ${cursor}%`;
+      return `${colorForPerson(p.id, people)} ${start}% ${cursor}%`;
     });
     donutGradient = `conic-gradient(${slices.join(', ')})`;
   }
@@ -1580,8 +1691,8 @@ function App() {
         amount: e.amount,
         origAmt: e.originalAmount != null ? e.originalAmount : '',
         origCur: e.originalCurrency || '',
-        paidBy: e.paidBy,
-        split: e.splitAmong.join(', '),
+        paidBy: personNameById(e.paidBy, people),
+        split: e.splitAmong.map((id) => personNameById(id, people)).join(', '),
       });
     });
 
@@ -1676,9 +1787,9 @@ function App() {
       startY: y,
       head: [['Person', 'Status']],
       body: sortedPeople.map((p) => {
-        const b = balances[p] || 0;
+        const b = balances[p.id] || 0;
         const status = b === 0 ? 'Settled up' : b > 0 ? `Is owed ${money(b)}` : `Owes ${money(b)}`;
-        return [p, status];
+        return [p.name, status];
       }),
       theme: 'grid',
       headStyles: { fillColor: BLUE, textColor: [255, 255, 255] },
@@ -1695,7 +1806,7 @@ function App() {
       doc.autoTable({
         startY: y,
         head: [['From', 'To', 'Amount']],
-        body: settlements.map((s) => [s.from, s.to, money(s.amt)]),
+        body: settlements.map((s) => [personNameById(s.from, people), personNameById(s.to, people), money(s.amt)]),
         theme: 'grid',
         headStyles: { fillColor: GREEN, textColor: [255, 255, 255] },
         styles: { fontSize: 10, textColor: INK, lineColor: [0, 0, 0], lineWidth: 0.1 },
@@ -1718,7 +1829,7 @@ function App() {
             e.ts ? pdfDate(e.ts) : '',
             e.description || 'Expense',
             money(e.amount),
-            e.paidBy,
+            personNameById(e.paidBy, people),
           ])
         : [['—', 'No expenses logged', '', '']],
       theme: 'grid',
@@ -1790,6 +1901,7 @@ function App() {
           onOpenManageCurrencies={() => { setShowTripSettings(false); setShowManageCurrencies(true); }}
           onExportExcel={() => { exportExcel(); setShowTripSettings(false); }}
           onExportPDF={() => { exportPDF(); setShowTripSettings(false); }}
+          onSaveName={(newName) => { mutateMeta(prev => ({ ...prev, name: newName || null })); showToast('Group name updated'); }}
           onClose={() => setShowTripSettings(false)}
         />
       )}
@@ -1818,17 +1930,18 @@ function App() {
       {showArchive && (
         <ArchiveModal
           archivedExpenses={trip.archivedExpenses || []}
+          people={people}
           symbol={symbol}
           onRestore={(id) => restoreExpense(id)}
           onClose={() => setShowArchive(false)}
         />
       )}
 
-      {showEmojiPickerFor && (
-        <EmojiPickerModal
-          personName={showEmojiPickerFor}
-          onSelect={(emoji) => { setPersonEmoji(showEmojiPickerFor, emoji); setShowEmojiPickerFor(null); }}
-          onClose={() => setShowEmojiPickerFor(null)}
+      {editingPerson && (
+        <EditPersonModal
+          person={editingPerson}
+          onSave={(name, avatar) => { editPerson(editingPerson.id, { name, avatar }); setEditingPerson(null); }}
+          onClose={() => setEditingPerson(null)}
         />
       )}
 
@@ -1864,14 +1977,14 @@ function App() {
 
               <h3 style={{marginTop: 22}}>Who owes what</h3>
               {sortedPeople.map(p => {
-                const b = balances[p] || 0;
+                const b = balances[p.id] || 0;
                 const cls = b > 0.005 ? 'amt-positive' : b < -0.005 ? 'amt-negative' : 'amt-zero';
                 const label = b > 0.005 ? 'is owed' : b < -0.005 ? 'owes' : 'settled up';
                 return (
-                  <div className="balance-row" key={p}>
+                  <div className="balance-row" key={p.id}>
                     <div className="person-tag">
-                      <div className="avatar" style={{background: softColorForPerson(p, people)}}>{avatarFor(p, trip.personEmojis)}</div>
-                      <span className="balance-name">{p}</span>
+                      <div className="avatar" style={{background: softColorForPerson(p.id, people)}}>{avatarFor(p)}</div>
+                      <span className="balance-name">{p.name}</span>
                     </div>
                     <span className={'balance-amt-clean ' + cls}>
                       {b === 0 ? 'settled up' : `${label} ${fmt(Math.abs(b), symbol)}`}
@@ -1887,16 +2000,20 @@ function App() {
                     <span className="settle-badge">{settlements.length}</span>
                   </summary>
                   <div className="settle-list">
-                    {settlements.map((s, i) => (
-                      <div className="settle-item" key={i}>
-                        <div className="avatar" style={{width: 22, height: 22, fontSize: 10, background: softColorForPerson(s.from, people)}}>{avatarFor(s.from, trip.personEmojis)}</div>
-                        <strong>{s.from}</strong>
-                        <span className="settle-arrow">→</span>
-                        <div className="avatar" style={{width: 22, height: 22, fontSize: 10, background: softColorForPerson(s.to, people)}}>{avatarFor(s.to, trip.personEmojis)}</div>
-                        <strong>{s.to}</strong>
-                        <span className="settle-amt">{fmt(s.amt, symbol)}</span>
-                      </div>
-                    ))}
+                    {settlements.map((s, i) => {
+                      const fromP = personById(s.from, people);
+                      const toP = personById(s.to, people);
+                      return (
+                        <div className="settle-item" key={i}>
+                          <div className="avatar" style={{width: 22, height: 22, fontSize: 10, background: softColorForPerson(s.from, people)}}>{avatarFor(fromP)}</div>
+                          <strong>{fromP ? fromP.name : 'Unknown'}</strong>
+                          <span className="settle-arrow">→</span>
+                          <div className="avatar" style={{width: 22, height: 22, fontSize: 10, background: softColorForPerson(s.to, people)}}>{avatarFor(toP)}</div>
+                          <strong>{toP ? toP.name : 'Unknown'}</strong>
+                          <span className="settle-amt">{fmt(s.amt, symbol)}</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </details>
               )}
@@ -1909,27 +2026,28 @@ function App() {
             <div className="section-title">People <span className="count">{people.length}</span></div>
             <div className="people-list">
               {people.map(p => (
-                <div className="person-row" key={p}>
+                <button className="person-row" key={p.id} onClick={() => setEditingPerson(p)}>
                   <div className="person-row-left">
-                    <div
-                      className="avatar"
-                      style={{background: softColorForPerson(p, people), cursor: 'pointer'}}
-                      onClick={() => setShowEmojiPickerFor(p)}
-                      title="Tap to change avatar"
-                    >
-                      {avatarFor(p, trip.personEmojis)}
+                    <div className="avatar" style={{background: softColorForPerson(p.id, people)}}>
+                      {avatarFor(p)}
                     </div>
-                    <span className="person-row-name">{p}</span>
+                    <span className="person-row-name">{p.name}</span>
                   </div>
-                  {confirmDeletePerson === p ? (
-                    <div className="person-row-confirm">
-                      <button className="person-row-confirm-yes" onClick={() => requestRemovePerson(p)}>Confirm</button>
+                  {confirmDeletePerson === p.id ? (
+                    <div className="person-row-confirm" onClick={(e) => e.stopPropagation()}>
+                      <button className="person-row-confirm-yes" onClick={() => requestRemovePerson(p.id)}>Confirm</button>
                       <button className="person-row-confirm-no" onClick={() => setConfirmDeletePerson(null)}>Cancel</button>
                     </div>
                   ) : (
-                    <button className="person-row-remove" onClick={() => requestRemovePerson(p)} title="Remove">✕</button>
+                    <span
+                      className="person-row-remove"
+                      onClick={(e) => { e.stopPropagation(); requestRemovePerson(p.id); }}
+                      title="Remove"
+                    >
+                      ✕
+                    </span>
                   )}
-                </div>
+                </button>
               ))}
             </div>
             <div className="add-person-row">
@@ -1967,7 +2085,7 @@ function App() {
                     <span className="expense-amt">{fmt(exp.amount, symbol)}</span>
                   </div>
                   <div className="expense-meta">
-                    {formatExpenseDate(exp.ts)} · Paid by <strong>{exp.paidBy}</strong> · split {exp.splitAmong.length} way{exp.splitAmong.length !== 1 ? 's' : ''} ({exp.splitAmong.join(', ')})
+                    {formatExpenseDate(exp.ts)} · Paid by <strong>{personNameById(exp.paidBy, people)}</strong> · split {exp.splitAmong.length} way{exp.splitAmong.length !== 1 ? 's' : ''} ({exp.splitAmong.map(id => personNameById(id, people)).join(', ')})
                   </div>
                   {exp.originalCurrency && (
                     <div className="expense-fx-note">
@@ -2014,7 +2132,6 @@ function App() {
           symbol={symbol}
           tripCurrency={currency}
           pinnedCurrencies={trip.pinnedCurrencies || []}
-          personEmojis={trip.personEmojis}
           tripCode={tripCode}
           initial={editingExpense}
           onClose={() => { setShowAddExpense(false); setEditingExpense(null); }}
@@ -2027,7 +2144,7 @@ function App() {
   );
 }
 
-function AddExpenseModal({ people, symbol, tripCurrency, pinnedCurrencies = [], personEmojis, tripCode, initial, onClose, onSave }) {
+function AddExpenseModal({ people, symbol, tripCurrency, pinnedCurrencies = [], tripCode, initial, onClose, onSave }) {
   const isEdit = !!initial;
   const [description, setDescription] = useState(initial ? initial.description : '');
   // If editing a foreign-currency expense, show the original typed amount/currency,
@@ -2045,15 +2162,15 @@ function AddExpenseModal({ people, symbol, tripCurrency, pinnedCurrencies = [], 
     }
     return tripCurrency;
   });
-  const [paidBy, setPaidBy] = useState(initial ? initial.paidBy : people[0]);
-  const [splitAmong, setSplitAmong] = useState(initial ? [...initial.splitAmong] : [...people]);
+  const [paidBy, setPaidBy] = useState(initial ? initial.paidBy : (people[0] ? people[0].id : null));
+  const [splitAmong, setSplitAmong] = useState(initial ? [...initial.splitAmong] : people.map(p => p.id));
   const [converting, setConverting] = useState(false);
   const [conversionError, setConversionError] = useState('');
   const [showCurrencyPicker, setShowCurrencyPicker] = useState(false);
   const [showManualRate, setShowManualRate] = useState(false);
   const [manualRate, setManualRate] = useState('');
 
-  const toggle = (p) => setSplitAmong(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]);
+  const toggle = (id) => setSplitAmong(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   const canSave = description.trim() && parseFloat(amount) > 0 && paidBy && splitAmong.length > 0 && !converting;
   const isForeign = expenseCurrency !== tripCurrency;
   const expenseSymbol = symbolFor(expenseCurrency);
@@ -2205,9 +2322,9 @@ function AddExpenseModal({ people, symbol, tripCurrency, pinnedCurrencies = [], 
           <span className="field-label">Who paid</span>
           <div className="payer-row">
             {people.map(p => (
-              <button key={p} className={'select-chip' + (paidBy === p ? ' active' : '')} onClick={() => setPaidBy(p)}>
-                <div className="avatar" style={{width: 18, height: 18, fontSize: 11, background: softColorForPerson(p, people)}}>{avatarFor(p, personEmojis)}</div>
-                {p}
+              <button key={p.id} className={'select-chip' + (paidBy === p.id ? ' active' : '')} onClick={() => setPaidBy(p.id)}>
+                <div className="avatar" style={{width: 18, height: 18, fontSize: 11, background: softColorForPerson(p.id, people)}}>{avatarFor(p)}</div>
+                {p.name}
               </button>
             ))}
           </div>
@@ -2217,10 +2334,10 @@ function AddExpenseModal({ people, symbol, tripCurrency, pinnedCurrencies = [], 
           <span className="field-label">Split among</span>
           <div className="split-list">
             {people.map(p => (
-              <label className="split-row" key={p}>
-                <input type="checkbox" checked={splitAmong.includes(p)} onChange={() => toggle(p)} />
-                <div className="avatar" style={{width: 20, height: 20, fontSize: 12, background: softColorForPerson(p, people)}}>{avatarFor(p, personEmojis)}</div>
-                {p}
+              <label className="split-row" key={p.id}>
+                <input type="checkbox" checked={splitAmong.includes(p.id)} onChange={() => toggle(p.id)} />
+                <div className="avatar" style={{width: 20, height: 20, fontSize: 12, background: softColorForPerson(p.id, people)}}>{avatarFor(p)}</div>
+                {p.name}
               </label>
             ))}
           </div>
