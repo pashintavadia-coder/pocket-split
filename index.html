@@ -668,12 +668,26 @@ function colorForPerson(id, people) {
 function softColorForPerson(id, people) {
   return `color-mix(in srgb, ${colorForPerson(id, people)} 22%, white)`;
 }
-function initials(name) { return (name || '?').trim().slice(0, 2).toUpperCase(); }
+function initials(name) { return (name || '?').trim().slice(0, 1).toUpperCase(); }
 
 const EMOJI_LIST = ['🦊', '🦁', '👻', '🍕', '🚀', '🐸', '🐼', '🦄', '🌵', '🍩', '🎈', '🐙'];
+function randomEmoji(exclude = []) {
+  const unused = EMOJI_LIST.filter((e) => !exclude.includes(e));
+  const pool = unused.length > 0 ? unused : EMOJI_LIST;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
 function avatarFor(person) {
   if (!person) return '?';
   return person.avatar || initials(person.name);
+}
+// Emoji avatars get a soft tint background (the emoji itself carries the
+// color); the monogram fallback gets a solid, vivid background with a bold
+// white letter instead — a pale two-letter monogram is what this replaces,
+// since two people sharing a first initial (e.g. "Pashin"/"Pankaj") used to
+// render as visually identical "PA" chips.
+function avatarBg(person, people) {
+  if (!person) return 'var(--surface-sunken)';
+  return person.avatar ? softColorForPerson(person.id, people) : colorForPerson(person.id, people);
 }
 function personById(id, people) { return (people || []).find((p) => p.id === id) || null; }
 function personNameById(id, people) {
@@ -1507,7 +1521,8 @@ function App() {
     if (trip.people.some(p => p.name.toLowerCase() === name.toLowerCase())) {
       showToast('Already on the list'); return;
     }
-    const newPerson = { id: newPersonId(), name, avatar: null };
+    const usedEmojis = trip.people.map(p => p.avatar).filter(Boolean);
+    const newPerson = { id: newPersonId(), name, avatar: randomEmoji(usedEmojis) };
     setTripMeta(prev => prev ? { ...prev, people: [...prev.people, newPerson] } : prev); // optimistic
     setNewPersonName('');
     if (!window.__firebase || !tripCode) return;
@@ -2173,7 +2188,7 @@ function App() {
                 return (
                   <div className="balance-row" key={p.id}>
                     <div className="person-tag">
-                      <div className="avatar" style={{background: softColorForPerson(p.id, people)}}>{avatarFor(p)}</div>
+                      <div className="avatar" style={{background: avatarBg(p, people)}}>{avatarFor(p)}</div>
                       <span className="balance-name">{p.name}</span>
                     </div>
                     <span className={'balance-amt-clean ' + cls}>
@@ -2195,10 +2210,10 @@ function App() {
                       const toP = personById(s.to, people);
                       return (
                         <div className="settle-item" key={i}>
-                          <div className="avatar" style={{width: 22, height: 22, fontSize: 10, background: softColorForPerson(s.from, people)}}>{avatarFor(fromP)}</div>
+                          <div className="avatar" style={{width: 22, height: 22, fontSize: 10, background: avatarBg(fromP, people)}}>{avatarFor(fromP)}</div>
                           <strong>{fromP ? fromP.name : 'Unknown'}</strong>
                           <span className="settle-arrow">→</span>
-                          <div className="avatar" style={{width: 22, height: 22, fontSize: 10, background: softColorForPerson(s.to, people)}}>{avatarFor(toP)}</div>
+                          <div className="avatar" style={{width: 22, height: 22, fontSize: 10, background: avatarBg(toP, people)}}>{avatarFor(toP)}</div>
                           <strong>{toP ? toP.name : 'Unknown'}</strong>
                           <span className="settle-amt">{fmt(s.amt, symbol)}</span>
                         </div>
@@ -2218,7 +2233,7 @@ function App() {
               {people.map(p => (
                 <button className="person-row" key={p.id} onClick={() => setEditingPerson(p)}>
                   <div className="person-row-left">
-                    <div className="avatar" style={{background: softColorForPerson(p.id, people)}}>
+                    <div className="avatar" style={{background: avatarBg(p, people)}}>
                       {avatarFor(p)}
                     </div>
                     <span className="person-row-name">{p.name}</span>
@@ -2513,7 +2528,7 @@ function AddExpenseModal({ people, symbol, tripCurrency, pinnedCurrencies = [], 
           <div className="payer-row">
             {people.map(p => (
               <button key={p.id} className={'select-chip' + (paidBy === p.id ? ' active' : '')} onClick={() => setPaidBy(p.id)}>
-                <div className="avatar" style={{width: 18, height: 18, fontSize: 11, background: softColorForPerson(p.id, people)}}>{avatarFor(p)}</div>
+                <div className="avatar" style={{width: 18, height: 18, fontSize: 11, background: avatarBg(p, people)}}>{avatarFor(p)}</div>
                 {p.name}
               </button>
             ))}
@@ -2526,7 +2541,7 @@ function AddExpenseModal({ people, symbol, tripCurrency, pinnedCurrencies = [], 
             {people.map(p => (
               <label className="split-row" key={p.id}>
                 <input type="checkbox" checked={splitAmong.includes(p.id)} onChange={() => toggle(p.id)} />
-                <div className="avatar" style={{width: 20, height: 20, fontSize: 12, background: softColorForPerson(p.id, people)}}>{avatarFor(p)}</div>
+                <div className="avatar" style={{width: 20, height: 20, fontSize: 12, background: avatarBg(p, people)}}>{avatarFor(p)}</div>
                 {p.name}
               </label>
             ))}
