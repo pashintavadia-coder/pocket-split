@@ -106,14 +106,15 @@
     position: relative; z-index: 2; text-align: left;
   }
   .switch-group-link {
-    background: #F3F4F6; border: none; box-shadow: none;
-    padding: 6px 16px; border-radius: 9999px;
-    color: #4B5563; font-size: 14px; font-weight: 600;
+    display: inline-flex; align-items: center; gap: 6px;
+    background: #FFFFFF; border: 1px solid #E5E7EB; box-shadow: var(--shadow-sm);
+    padding: 6px 12px; border-radius: 8px;
+    color: #4B5563; font-size: 12px; font-weight: 600;
     font-family: 'Outfit', sans-serif;
     text-decoration: none; cursor: pointer; flex-shrink: 0;
     transition: background-color 0.15s ease, color 0.15s ease;
   }
-  .switch-group-link:hover, .switch-group-link:active { background: #E5E7EB; color: #1F2937; }
+  .switch-group-link:hover, .switch-group-link:active { background: #F9FAFB; color: #1F2937; }
   .header-controls { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; position: relative; z-index: 2; }
   .pill {
     display: flex; align-items: center; justify-content: center; gap: 6px;
@@ -416,21 +417,34 @@
     border-radius: 9999px; padding: 7px 16px; font-size: 13px; font-weight: 700; cursor: pointer;
   }
   .create-group-form { display: flex; flex-direction: column; gap: 16px; margin-bottom: 16px; }
-  .currency-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .join-group-block { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
   .create-group-form .field { margin-bottom: 0; }
-  .add-foreign-currency-btn {
-    font-size: 14px; font-weight: 700; color: var(--google-blue);
-    background: var(--google-blue-tint); border: none; border-radius: 9999px;
-    padding: 8px 16px; cursor: pointer; font-family: 'Outfit', sans-serif;
-  }
 
-  .base-currency-btn {
-    width: 100%; display: flex; align-items: center; text-align: left;
-    font-family: 'Outfit', sans-serif; font-size: 15px; font-weight: 600; padding: 13px 14px;
-    border: 1.5px solid var(--border); border-radius: 12px; background: var(--surface-inner); color: var(--text-main);
+  .currency-unified-box {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 10px;
+    width: 100%; box-sizing: border-box; min-height: 48px;
+    background: #F9FAFB; border: 1.5px solid #E5E7EB; border-radius: 12px;
+    padding: 12px 16px; cursor: pointer;
+  }
+  .currency-base-chip {
+    display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;
+    background: var(--surface-inner); border: 1px solid var(--border); border-radius: 8px;
+    padding: 5px 10px; font-family: 'Outfit', sans-serif; font-weight: 700; font-size: 14px; color: var(--text-main);
     cursor: pointer;
   }
-  .base-currency-btn:focus { border-color: var(--google-blue); box-shadow: 0 0 0 3px var(--google-blue-tint); outline: none; }
+  .base-badge {
+    background: var(--google-blue-tint); color: var(--google-blue-dark);
+    border-radius: 6px; padding: 1px 6px; font-size: 10px; font-weight: 800;
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .currency-placeholder { color: #9CA3AF; font-size: 15px; font-family: 'Outfit', sans-serif; }
+  .currency-foreign-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .currency-foreign-chip-inline {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: var(--surface-inner); border: 1px solid var(--border); border-radius: 8px;
+    padding: 3px 8px 3px 9px; font-size: 13px; font-weight: 600; color: var(--text-main); font-family: 'JetBrains Mono', monospace;
+  }
+  .currency-foreign-chip-inline button { background: none; border: none; color: var(--text-faint); cursor: pointer; font-size: 13px; padding: 0; line-height: 1; }
 
   .currency-select-btn {
     display: inline-flex; align-items: center; gap: 6px;
@@ -1660,31 +1674,28 @@ function App() {
               onKeyDown={(e) => e.key === 'Enter' && createTrip()}
             />
           </div>
-          <div className="currency-grid">
-            <div className="field">
-              <span className="field-label">Base currency</span>
+          <div className="field">
+            <span className="field-label">Currencies</span>
+            <div className="currency-unified-box" onClick={() => setShowNewTripCurrencyPicker(true)}>
               <button
                 type="button"
-                className="base-currency-btn"
-                onClick={() => setShowBaseCurrencyPicker(true)}
+                className="currency-base-chip"
+                onClick={(e) => { e.stopPropagation(); setShowBaseCurrencyPicker(true); }}
               >
                 {symbolFor(newTripBaseCurrency)} {newTripBaseCurrency}
+                <span className="base-badge">Base</span>
               </button>
-            </div>
-            <div className="field">
-              <span className="field-label">Foreign (optional)</span>
-              <button className="add-foreign-currency-btn" onClick={() => setShowNewTripCurrencyPicker(true)}>
-                + Add Currencies
-              </button>
-              {newTripForeignCurrencies.length > 0 && (
-                <div className="pinned-chip-row" style={{marginTop: 8}}>
+              {newTripForeignCurrencies.length > 0 ? (
+                <div className="currency-foreign-chips">
                   {newTripForeignCurrencies.map((code) => (
-                    <div className="chip" key={code}>
-                      <span>{code}</span>
-                      <button onClick={() => setNewTripForeignCurrencies((prev) => prev.filter((c) => c !== code))}>×</button>
-                    </div>
+                    <span className="currency-foreign-chip-inline" key={code} onClick={(e) => e.stopPropagation()}>
+                      {code}
+                      <button onClick={(e) => { e.stopPropagation(); setNewTripForeignCurrencies((prev) => prev.filter((c) => c !== code)); }}>×</button>
+                    </span>
                   ))}
                 </div>
+              ) : (
+                <span className="currency-placeholder">e.g. + Add USD…</span>
               )}
             </div>
           </div>
@@ -1693,18 +1704,18 @@ function App() {
           </button>
         </div>
         <div className="or-divider">or join with a code</div>
-        <div className="field">
+        <div className="join-group-block">
           <input
             type="text" placeholder="e.g. K7QXPMR" value={codeInput}
             onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
-            style={{ textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10 }}
+            style={{ textTransform: 'uppercase', letterSpacing: '0.1em' }}
             maxLength={10}
             onKeyDown={(e) => e.key === 'Enter' && joinTrip()}
           />
+          <button className="btn btn-outline" onClick={joinTrip} disabled={loading}>
+            Join Group
+          </button>
         </div>
-        <button className="btn btn-outline" onClick={joinTrip} disabled={loading}>
-          Join Group
-        </button>
 
         {tripHistory.length > 0 && (
           <>
@@ -2027,7 +2038,15 @@ function App() {
             <FanStack />
             <span className="brand-name">Pocket Split</span>
           </div>
-          <button className="switch-group-link" onClick={leaveTrip}>Switch group</button>
+          <button className="switch-group-link" onClick={leaveTrip}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17 3L21 7L17 11" />
+              <path d="M3 7H21" />
+              <path d="M7 21L3 17L7 13" />
+              <path d="M21 17H3" />
+            </svg>
+            Switch group
+          </button>
         </div>
         <h1 className="trip-headline">{trip.name || 'Untitled Group'}</h1>
         <div className="header-controls">
