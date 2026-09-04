@@ -416,6 +416,7 @@
     border-radius: 9999px; padding: 7px 16px; font-size: 13px; font-weight: 700; cursor: pointer;
   }
   .create-group-form { display: flex; flex-direction: column; gap: 16px; margin-bottom: 16px; }
+  .currency-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
   .create-group-form .field { margin-bottom: 0; }
   .add-foreign-currency-btn {
     font-size: 14px; font-weight: 700; color: var(--google-blue);
@@ -1659,30 +1660,33 @@ function App() {
               onKeyDown={(e) => e.key === 'Enter' && createTrip()}
             />
           </div>
-          <div className="field">
-            <span className="field-label">Base currency</span>
-            <button
-              type="button"
-              className="base-currency-btn"
-              onClick={() => setShowBaseCurrencyPicker(true)}
-            >
-              {symbolFor(newTripBaseCurrency)} {newTripBaseCurrency}
-            </button>
-          </div>
-          <div className="field">
-            <button className="add-foreign-currency-btn" onClick={() => setShowNewTripCurrencyPicker(true)}>
-              + Add Foreign Currencies (for travel)
-            </button>
-            {newTripForeignCurrencies.length > 0 && (
-              <div className="pinned-chip-row" style={{marginTop: 10}}>
-                {newTripForeignCurrencies.map((code) => (
-                  <div className="chip" key={code}>
-                    <span>{code}</span>
-                    <button onClick={() => setNewTripForeignCurrencies((prev) => prev.filter((c) => c !== code))}>×</button>
-                  </div>
-                ))}
-              </div>
-            )}
+          <div className="currency-grid">
+            <div className="field">
+              <span className="field-label">Base currency</span>
+              <button
+                type="button"
+                className="base-currency-btn"
+                onClick={() => setShowBaseCurrencyPicker(true)}
+              >
+                {symbolFor(newTripBaseCurrency)} {newTripBaseCurrency}
+              </button>
+            </div>
+            <div className="field">
+              <span className="field-label">Foreign (optional)</span>
+              <button className="add-foreign-currency-btn" onClick={() => setShowNewTripCurrencyPicker(true)}>
+                + Add Currencies
+              </button>
+              {newTripForeignCurrencies.length > 0 && (
+                <div className="pinned-chip-row" style={{marginTop: 8}}>
+                  {newTripForeignCurrencies.map((code) => (
+                    <div className="chip" key={code}>
+                      <span>{code}</span>
+                      <button onClick={() => setNewTripForeignCurrencies((prev) => prev.filter((c) => c !== code))}>×</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
           <button className="btn btn-primary" onClick={createTrip} disabled={loading}>
             Start a New Group
@@ -1704,7 +1708,7 @@ function App() {
 
         {tripHistory.length > 0 && (
           <>
-            <div className="section-title" style={{marginTop: 30}}>Groups</div>
+            <div className="section-title" style={{marginTop: 24}}>Groups</div>
             <div className="history-list">
               {tripHistory.map((h) => (
                 <div className="history-item" key={h.code} onClick={() => jumpToTrip(h.code)}>
